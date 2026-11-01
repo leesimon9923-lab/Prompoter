@@ -35,9 +35,12 @@
 
   /* camera */
   #cam { background:#000; }
-  #video { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
-  #video.mirror { transform:scaleX(-1); }
-  #prompter { position:absolute; left:0; right:0; top:0; height:var(--ph,36%); overflow:hidden;
+  #video { position:absolute; width:2px; height:2px; opacity:0; pointer-events:none; }
+  #frame { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); aspect-ratio:9/16; height:100%; max-width:100%; overflow:hidden; background:#111; }
+  #canvas { width:100%; height:100%; display:block; }
+  #canvas.mirror { transform:scaleX(-1); }
+  #dims { position:absolute; right:8px; bottom:6px; font-size:11px; color:rgba(255,255,255,.45); pointer-events:none; }
+  #prompter { position:absolute; left:0; right:0; top:0; z-index:2; height:var(--ph,36%); overflow:hidden;
     background:rgba(0,0,0,var(--po,.55)); padding-top:env(safe-area-inset-top); }
   #text { position:absolute; left:18px; right:18px; top:0; font-weight:800; line-height:1.42; word-break:keep-all;
     text-shadow:0 2px 6px rgba(0,0,0,.6); will-change:transform; }
@@ -46,7 +49,7 @@
   #marker { position:absolute; left:3px; width:0; height:0; border-top:8px solid transparent; border-bottom:8px solid transparent; border-left:11px solid var(--accent); }
   #fadeB { position:absolute; left:0; right:0; bottom:0; height:40%; background:linear-gradient(transparent, rgba(0,0,0,var(--po,.55))); pointer-events:none; }
 
-  #topbar { position:absolute; left:0; right:0; top:calc(var(--ph,36%) + 6px); display:flex; justify-content:space-between; padding:0 12px; pointer-events:none; }
+  #topbar { position:absolute; left:0; right:0; top:calc(var(--ph,36%) + 6px); z-index:3; display:flex; justify-content:space-between; padding:0 12px; pointer-events:none; }
   #rec-time { pointer-events:none; background:rgba(0,0,0,.5); border-radius:20px; padding:6px 12px; font-weight:800; font-size:16px; }
   #rec-time.on::before { content:''; display:inline-block; width:10px; height:10px; border-radius:50%; background:var(--red); margin-right:7px; vertical-align:1px; }
 
@@ -89,7 +92,9 @@
 <!-- 2. camera -->
 <div id="cam" class="screen hidden">
   <video id="video" playsinline muted autoplay></video>
-  <div id="prompter"><div id="text"></div><div id="marker"></div><div id="fadeB"></div></div>
+  <div id="frame"><canvas id="canvas" width="1080" height="1920"></canvas>
+    <div id="prompter"><div id="text"></div><div id="marker"></div><div id="fadeB"></div></div>
+    <div id="dims"></div></div>
   <div id="topbar"><span></span><span id="rec-time">00:00</span></div>
   <div id="count" class="hidden">3</div>
   <div id="controls">
@@ -166,22 +171,62 @@
   }
   async function openCamera(){
     if (st.stream) st.stream.getTracks().forEach(t => t.stop());
+    st.stream = null;
+    const v = $('#video');
+    const fm = st.facing;
+    const audio = { echoCancellation:false, noiseSuppression:true };
+    // try portrait-first; keep the best (portrait preferred, otherwise widest view)
     const tries = [
-      { video:{ facingMode:st.facing, width:{ideal:1080}, height:{ideal:1920}, frameRate:{ideal:30} }, audio:{ echoCancellation:false, noiseSuppression:true } },
-      { video:{ facingMode:st.facing }, audio:true }
+      { facingMode:fm, width:{ideal:1080}, height:{ideal:1920}, aspectRatio:{ideal:9/16}, frameRate:{ideal:30} },
+      { facingMode:fm, width:{ideal:1080}, height:{ideal:1440}, aspectRatio:{ideal:3/4}, frameRate:{ideal:30} },
+      { facingMode:fm, width:{ideal:1440}, height:{ideal:1080}, frameRate:{ideal:30} },
+      { facingMode:fm }
     ];
-    let lastErr;
-    for (const c of tries){
-      try { st.stream = await navigator.mediaDevices.getUserMedia(c); break; } catch(e){ lastErr = e; }
+    let best = null, bestScore = -1, lastErr;
+    for (const vc of tries){
+      let s;
+      try { s = await navigator.mediaDevices.getUserMedia({ video:vc, audio }); }
+      catch(e){ try { s = await navigator.mediaDevices.getUserMedia({ video:vc, audio:true }); } catch(e2){ lastErr = e2; continue; } }
+      v.srcObject = s;
+      await new Promise(r => { if (v.videoWidth) r(); else { v.onloadedmetadata = () => r(); setTimeout(r, 1500); } });
+      try { await v.play(); } catch(e){}
+      const w = v.videoWidth || 1, h = v.videoHeight || 1;
+      // how much of the frame survives a 9:16 crop
+      const keep = (w/h > 9/16) ? (h*9/16)/w : (w*16/9)/h;
+      const score = keep * Math.min(w,h);
+      if (score > bestScore){ if (best) best.getTracks().forEach(t=>t.stop()); best = s; bestScore = score; }
+      else s.getTracks().forEach(t=>t.stop());
+      if (h > w) break; // portrait stream: good enough
     }
-    if (!st.stream) throw lastErr || new Error('camera');
-    const v = $('#video'); v.srcObject = st.stream; v.classList.toggle('mirror', st.facing === 'user');
+    if (!best) throw lastErr || new Error('camera');
+    st.stream = best; v.srcObject = best;
     try { await v.play(); } catch(e){}
+    startDraw();
+  }
+  // draw camera into a fixed 1080x1920 (9:16) canvas: what you see is exactly what is recorded
+  function startDraw(){
+    const v = $('#video'), cv = $('#canvas'), cx = cv.getContext('2d');
+    cancelAnimationFrame(st.drawRaf);
+    const loop = () => {
+      const vw = v.videoWidth, vh = v.videoHeight;
+      if (vw && vh){
+        const W = cv.width, H = cv.height, tr = W/H, sr = vw/vh;
+        let sw, sh, sx, sy;
+        if (sr > tr){ sh = vh; sw = vh*tr; sx = (vw-sw)/2; sy = 0; } else { sw = vw; sh = vw/tr; sx = 0; sy = (vh-sh)/2; }
+        if (st.facing === 'user'){ cx.setTransform(-1,0,0,1,W,0); } else { cx.setTransform(1,0,0,1,0,0); }
+        cx.drawImage(v, sx, sy, sw, sh, 0, 0, W, H);
+        cx.setTransform(1,0,0,1,0,0);
+        $('#dims').textContent = vw + '×' + vh;
+      }
+      st.drawRaf = requestAnimationFrame(loop);
+    };
+    st.drawRaf = requestAnimationFrame(loop);
   }
   async function keepAwake(){ try { if ('wakeLock' in navigator) st.wake = await navigator.wakeLock.request('screen'); } catch(e){} }
 
   const textEl = $('#text'), pr = $('#prompter');
   const lineTop = () => Math.max(14, pr.clientHeight * 0.16);
+  st.drawRaf = 0;
   const pxPerSec = () => st.speed * st.size * 0.09;
   function apply(){ textEl.style.transform = `translateY(${lineTop() - st.y}px)`; }
   function place(){
@@ -221,6 +266,7 @@
     if (st.rec && st.rec.state === 'recording') return;
     scrollPause();
     if (st.stream) st.stream.getTracks().forEach(t => t.stop()); st.stream = null;
+    cancelAnimationFrame(st.drawRaf);
     $('#cam').classList.add('hidden'); $('#setup').classList.remove('hidden');
   });
   $('#pauseBtn').addEventListener('click', () => { st.playing ? scrollPause() : scrollPlay(); });
@@ -239,8 +285,10 @@
   function startRecording(){
     st.mime = pickMime(); st.ext = st.mime.includes('mp4') ? 'mp4' : 'webm';
     st.chunks = [];
-    try { st.rec = new MediaRecorder(st.stream, st.mime ? { mimeType: st.mime, videoBitsPerSecond: 8_000_000 } : undefined); }
-    catch(e){ st.rec = new MediaRecorder(st.stream); st.ext='webm'; }
+    const out = $('#canvas').captureStream(30);
+    st.stream.getAudioTracks().forEach(t => out.addTrack(t));
+    try { st.rec = new MediaRecorder(out, st.mime ? { mimeType: st.mime, videoBitsPerSecond: 10_000_000 } : undefined); }
+    catch(e){ st.rec = new MediaRecorder(out); st.ext='webm'; }
     st.rec.ondataavailable = e => { if (e.data && e.data.size) st.chunks.push(e.data); };
     st.rec.onstop = finish;
     st.rec.start(1000);
