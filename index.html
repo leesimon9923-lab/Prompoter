@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0e0f12">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>시몬골프 프롬프터</title>
+<style>
+  :root { --bg:#0e0f12; --fg:#f4f4f2; --dim:#8a8f99; --accent:#FFD43B; --panel:#1a1c21; --red:#ff3b3b; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body { margin:0; height:100%; background:#000; color:var(--fg); overflow:hidden;
+    font-family: -apple-system, "Pretendard", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif; }
+  button { font:inherit; color:inherit; background:var(--panel); border:1px solid #2c2f36; border-radius:12px; padding:12px 16px; }
+  button.primary { background:var(--accent); color:#111; border:none; font-weight:800; }
+  .hidden { display:none !important; }
+  .screen { position:fixed; inset:0; }
+
+  /* setup */
+  #setup { background:var(--bg); overflow:auto; padding:calc(14px + env(safe-area-inset-top)) 16px 24px; }
+  #setup h1 { font-size:21px; margin:2px 0 6px; }
+  #setup p.help { color:var(--dim); font-size:14px; line-height:1.5; margin:0 0 12px; }
+  textarea { width:100%; height:38vh; background:var(--panel); color:var(--fg); border:1px solid #2c2f36;
+    border-radius:12px; padding:14px; font-size:17px; line-height:1.6; resize:vertical; }
+  .row { display:flex; gap:10px; align-items:center; margin:12px 0; flex-wrap:wrap; }
+  .row label { font-size:15px; color:#cfd2d8; min-width:80px; }
+  input[type=range] { flex:1; min-width:120px; accent-color:var(--accent); }
+  .val { min-width:34px; text-align:right; color:var(--accent); font-weight:700; }
+  .seg { display:flex; background:var(--panel); border:1px solid #2c2f36; border-radius:12px; overflow:hidden; }
+  .seg button { border:none; border-radius:0; background:transparent; padding:10px 14px; color:var(--dim); }
+  .seg button.on { background:var(--accent); color:#111; font-weight:800; }
+  #err { color:#ff8a8a; font-size:14px; line-height:1.5; margin-top:8px; }
+
+  /* camera */
+  #cam { background:#000; }
+  #video { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
+  #video.mirror { transform:scaleX(-1); }
+  #prompter { position:absolute; left:0; right:0; top:0; height:var(--ph,36%); overflow:hidden;
+    background:rgba(0,0,0,var(--po,.55)); padding-top:env(safe-area-inset-top); }
+  #text { position:absolute; left:18px; right:18px; top:0; font-weight:800; line-height:1.42; word-break:keep-all;
+    text-shadow:0 2px 6px rgba(0,0,0,.6); will-change:transform; }
+  #text p { margin:0 0 .85em; }
+  #text .dir { display:block; font-size:.5em; font-weight:600; color:#e0b84a; margin-bottom:.2em; }
+  #marker { position:absolute; left:3px; width:0; height:0; border-top:8px solid transparent; border-bottom:8px solid transparent; border-left:11px solid var(--accent); }
+  #fadeB { position:absolute; left:0; right:0; bottom:0; height:40%; background:linear-gradient(transparent, rgba(0,0,0,var(--po,.55))); pointer-events:none; }
+
+  #topbar { position:absolute; left:0; right:0; top:calc(var(--ph,36%) + 6px); display:flex; justify-content:space-between; padding:0 12px; pointer-events:none; }
+  #rec-time { pointer-events:none; background:rgba(0,0,0,.5); border-radius:20px; padding:6px 12px; font-weight:800; font-size:16px; }
+  #rec-time.on::before { content:''; display:inline-block; width:10px; height:10px; border-radius:50%; background:var(--red); margin-right:7px; vertical-align:1px; }
+
+  #controls { position:absolute; left:0; right:0; bottom:0; padding:12px 14px calc(16px + env(safe-area-inset-bottom));
+    display:flex; align-items:center; justify-content:space-between; background:linear-gradient(transparent, rgba(0,0,0,.6)); }
+  .side { display:flex; gap:8px; align-items:center; }
+  .side button { background:rgba(26,28,33,.85); padding:10px 12px; font-size:14px; }
+  #spd { color:var(--accent); font-weight:800; min-width:26px; text-align:center; }
+  #recBtn { width:78px; height:78px; border-radius:50%; border:5px solid #fff; background:transparent; padding:0; display:flex; align-items:center; justify-content:center; }
+  #recBtn span { display:block; width:58px; height:58px; border-radius:50%; background:var(--red); transition:all .2s; }
+  #recBtn.on span { width:30px; height:30px; border-radius:7px; }
+  #count { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:140px; font-weight:900; color:var(--accent); text-shadow:0 4px 20px rgba(0,0,0,.7); pointer-events:none; }
+
+  /* review */
+  #review { background:#000; display:flex; flex-direction:column; }
+  #playback { flex:1; width:100%; min-height:0; background:#000; }
+  #reviewBar { display:flex; gap:8px; padding:12px 14px calc(14px + env(safe-area-inset-bottom)); background:var(--bg); }
+  #reviewBar button { flex:1; padding:14px 8px; }
+  #saveMsg { color:var(--dim); font-size:13px; text-align:center; padding:8px 14px 0; background:var(--bg); line-height:1.5; }
+</style>
+</head>
+<body>
+
+<!-- 1. setup -->
+<div id="setup" class="screen">
+  <h1>시몬골프 프롬프터</h1>
+  <p class="help">대본을 붙여넣고 "카메라 켜기"를 누르세요. 녹화 버튼을 누르면 3초 뒤 녹화와 대본이 같이 시작돼요.</p>
+  <textarea id="script" placeholder="여기에 대본을 붙여넣으세요"></textarea>
+  <div class="row"><label>흐르는 속도</label><input type="range" id="speed" min="1" max="20" step="1"><span class="val" id="speedVal"></span></div>
+  <div class="row"><label>글자 크기</label><input type="range" id="size" min="20" max="56" step="2"><span class="val" id="sizeVal"></span></div>
+  <div class="row"><label>대본 창 높이</label><input type="range" id="ph" min="22" max="60" step="2"><span class="val" id="phVal"></span></div>
+  <div class="row"><label>촬영 지시</label>
+    <div class="seg" id="dirSeg"><button data-v="1">작게 보이기</button><button data-v="0">숨기기</button></div></div>
+  <div class="row"><label>카메라</label>
+    <div class="seg" id="camSeg"><button data-v="user">앞카메라</button><button data-v="environment">뒤카메라</button></div></div>
+  <div class="row"><button class="primary" id="goBtn" style="flex:1;padding:16px;font-size:18px">카메라 켜기</button></div>
+  <div id="err"></div>
+</div>
+
+<!-- 2. camera -->
+<div id="cam" class="screen hidden">
+  <video id="video" playsinline muted autoplay></video>
+  <div id="prompter"><div id="text"></div><div id="marker"></div><div id="fadeB"></div></div>
+  <div id="topbar"><span></span><span id="rec-time">00:00</span></div>
+  <div id="count" class="hidden">3</div>
+  <div id="controls">
+    <div class="side"><button id="backBtn">대본</button><button id="pauseBtn">멈춤</button></div>
+    <button id="recBtn" aria-label="녹화"><span></span></button>
+    <div class="side"><button id="slowBtn">－</button><span id="spd"></span><button id="fastBtn">＋</button></div>
+  </div>
+</div>
+
+<!-- 3. review -->
+<div id="review" class="screen hidden">
+  <video id="playback" playsinline controls></video>
+  <div id="saveMsg"></div>
+  <div id="reviewBar">
+    <button id="retakeBtn">다시 찍기</button>
+    <button id="shareBtn">공유·갤러리</button>
+    <button class="primary" id="saveBtn">저장</button>
+  </div>
+</div>
+
+<script>
+(function(){
+  const $ = s => document.querySelector(s);
+  const store = {
+    get(k,d){ try{ const v=localStorage.getItem(k); return v===null?d:v; }catch(e){ return d; } },
+    set(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
+  };
+  const st = {
+    speed:+store.get('sp_speed',6), size:+store.get('sp_size',32), ph:+store.get('sp_ph',36),
+    dir:store.get('sp_dir','1'), facing:store.get('sp_cam','user'),
+    stream:null, rec:null, chunks:[], blob:null, mime:'', ext:'mp4',
+    y:0, playing:false, last:0, raf:0, maxY:0, t0:0, timerIv:0, wake:null, busy:false
+  };
+
+  // ---------- setup ----------
+  const ta = $('#script');
+  ta.value = store.get('sp_script','');
+  ta.addEventListener('input', () => store.set('sp_script', ta.value));
+  function bindRange(id, key, fmt){
+    const el = $('#'+id), out = $('#'+id+'Val');
+    el.value = st[key]; out.textContent = fmt(st[key]);
+    el.addEventListener('input', () => { st[key] = +el.value; out.textContent = fmt(st[key]); store.set('sp_'+key, st[key]); });
+  }
+  bindRange('speed','speed',v=>v); bindRange('size','size',v=>v); bindRange('ph','ph',v=>v+'%');
+  function bindSeg(id, key, skey){
+    const btns = document.querySelectorAll('#'+id+' button');
+    const paint = () => btns.forEach(b => b.classList.toggle('on', b.dataset.v === st[key]));
+    paint();
+    btns.forEach(b => b.addEventListener('click', () => { st[key] = b.dataset.v; store.set(skey, st[key]); paint(); }));
+  }
+  bindSeg('dirSeg','dir','sp_dir'); bindSeg('camSeg','facing','sp_cam');
+
+  function esc(s){ return s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+  function build(text){
+    const paras = text.replace(/\r/g,'').split(/\n+/).map(s=>s.trim()).filter(Boolean);
+    let html='', pend=[];
+    for (const p of paras){
+      const dirs=[];
+      const rest = p.replace(/[\(\[]([^\)\]]*)[\)\]]/g,(m,i)=>{ dirs.push(i.trim()); return ' '; }).replace(/\s+/g,' ').trim();
+      pend.push(...dirs.filter(Boolean));
+      if (!rest) continue;
+      const d = (st.dir==='1' && pend.length) ? `<span class="dir">(${esc(pend.join(' / '))})</span>` : '';
+      html += `<p>${d}${esc(rest)}</p>`; pend=[];
+    }
+    return html;
+  }
+
+  // ---------- camera ----------
+  function pickMime(){
+    const list = ['video/mp4;codecs=avc1.42E01E,mp4a.40.2','video/mp4;codecs=avc1,mp4a','video/mp4',
+                  'video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm'];
+    for (const m of list){ try{ if (window.MediaRecorder && MediaRecorder.isTypeSupported(m)) return m; }catch(e){} }
+    return '';
+  }
+  async function openCamera(){
+    if (st.stream) st.stream.getTracks().forEach(t => t.stop());
+    const tries = [
+      { video:{ facingMode:st.facing, width:{ideal:1080}, height:{ideal:1920}, frameRate:{ideal:30} }, audio:{ echoCancellation:false, noiseSuppression:true } },
+      { video:{ facingMode:st.facing }, audio:true }
+    ];
+    let lastErr;
+    for (const c of tries){
+      try { st.stream = await navigator.mediaDevices.getUserMedia(c); break; } catch(e){ lastErr = e; }
+    }
+    if (!st.stream) throw lastErr || new Error('camera');
+    const v = $('#video'); v.srcObject = st.stream; v.classList.toggle('mirror', st.facing === 'user');
+    try { await v.play(); } catch(e){}
+  }
+  async function keepAwake(){ try { if ('wakeLock' in navigator) st.wake = await navigator.wakeLock.request('screen'); } catch(e){} }
+
+  const textEl = $('#text'), pr = $('#prompter');
+  const lineTop = () => Math.max(14, pr.clientHeight * 0.16);
+  const pxPerSec = () => st.speed * st.size * 0.09;
+  function apply(){ textEl.style.transform = `translateY(${lineTop() - st.y}px)`; }
+  function place(){
+    document.documentElement.style.setProperty('--ph', st.ph + '%');
+    textEl.style.fontSize = st.size + 'px';
+    $('#marker').style.top = (lineTop() + st.size*0.71 - 8) + 'px';
+    st.maxY = textEl.scrollHeight; apply();
+  }
+  function tick(t){
+    if (!st.playing){ st.raf = 0; return; }
+    const dt = st.last ? (t - st.last)/1000 : 0; st.last = t;
+    st.y = Math.min(st.maxY, st.y + pxPerSec()*dt); apply();
+    if (st.y >= st.maxY){ st.playing = false; st.raf = 0; $('#pauseBtn').textContent = '재생'; return; }
+    st.raf = requestAnimationFrame(tick);
+  }
+  function scrollPlay(){ st.playing = true; st.last = 0; $('#pauseBtn').textContent = '멈춤'; if (!st.raf) st.raf = requestAnimationFrame(tick); }
+  function scrollPause(){ st.playing = false; $('#pauseBtn').textContent = '재생'; }
+  function setSpeed(v){ st.speed = Math.max(1, Math.min(20, v)); store.set('sp_speed', st.speed); $('#spd').textContent = st.speed; $('#speed').value = st.speed; $('#speedVal').textContent = st.speed; }
+
+  $('#goBtn').addEventListener('click', async () => {
+    $('#err').textContent = '';
+    const html = build(ta.value);
+    if (!html){ $('#err').textContent = '대본을 먼저 붙여넣어 주세요.'; ta.focus(); return; }
+    try { await openCamera(); }
+    catch(e){
+      $('#err').textContent = '카메라를 열 수 없어요. 크롬 주소창 왼쪽 자물쇠 → 권한에서 카메라·마이크를 허용해 주세요. (' + (e && e.name || e) + ')';
+      return;
+    }
+    textEl.innerHTML = html + '<p style="height:40vh"></p>';
+    $('#setup').classList.add('hidden'); $('#cam').classList.remove('hidden');
+    st.y = 0; scrollPause(); $('#pauseBtn').textContent = '재생'; setSpeed(st.speed);
+    $('#rec-time').textContent = '00:00'; $('#rec-time').classList.remove('on');
+    place(); setTimeout(place, 300); keepAwake();
+  });
+
+  $('#backBtn').addEventListener('click', () => {
+    if (st.rec && st.rec.state === 'recording') return;
+    scrollPause();
+    if (st.stream) st.stream.getTracks().forEach(t => t.stop()); st.stream = null;
+    $('#cam').classList.add('hidden'); $('#setup').classList.remove('hidden');
+  });
+  $('#pauseBtn').addEventListener('click', () => { st.playing ? scrollPause() : scrollPlay(); });
+  $('#slowBtn').addEventListener('click', () => setSpeed(st.speed - 1));
+  $('#fastBtn').addEventListener('click', () => setSpeed(st.speed + 1));
+
+  // drag prompter to reposition
+  let drag=null;
+  pr.addEventListener('pointerdown', e => { drag = { y0:e.clientY, s0:st.y, was:st.playing }; st.playing=false; });
+  pr.addEventListener('pointermove', e => { if(!drag) return; st.y = Math.max(0, Math.min(st.maxY, drag.s0 - (e.clientY - drag.y0))); apply(); });
+  const endDrag = () => { if(!drag) return; const was = drag.was; drag = null; if (was) scrollPlay(); };
+  pr.addEventListener('pointerup', endDrag); pr.addEventListener('pointercancel', endDrag);
+
+  function fmt(s){ const m=Math.floor(s/60), x=Math.floor(s%60); return String(m).padStart(2,'0')+':'+String(x).padStart(2,'0'); }
+
+  function startRecording(){
+    st.mime = pickMime(); st.ext = st.mime.includes('mp4') ? 'mp4' : 'webm';
+    st.chunks = [];
+    try { st.rec = new MediaRecorder(st.stream, st.mime ? { mimeType: st.mime, videoBitsPerSecond: 8_000_000 } : undefined); }
+    catch(e){ st.rec = new MediaRecorder(st.stream); st.ext='webm'; }
+    st.rec.ondataavailable = e => { if (e.data && e.data.size) st.chunks.push(e.data); };
+    st.rec.onstop = finish;
+    st.rec.start(1000);
+    st.t0 = Date.now(); $('#rec-time').classList.add('on');
+    st.timerIv = setInterval(() => { $('#rec-time').textContent = fmt((Date.now()-st.t0)/1000); }, 250);
+    $('#recBtn').classList.add('on');
+    st.y = 0; apply(); scrollPlay();
+  }
+  function stopRecording(){
+    if (st.rec && st.rec.state !== 'inactive') st.rec.stop();
+    clearInterval(st.timerIv); $('#rec-time').classList.remove('on'); $('#recBtn').classList.remove('on'); scrollPause();
+  }
+  $('#recBtn').addEventListener('click', () => {
+    if (st.busy) return;
+    if (st.rec && st.rec.state === 'recording'){ stopRecording(); return; }
+    st.busy = true;
+    const c = $('#count'); let n = 3; c.textContent = n; c.classList.remove('hidden');
+    st.y = 0; apply();
+    const iv = setInterval(() => {
+      n--; if (n > 0){ c.textContent = n; return; }
+      clearInterval(iv); c.classList.add('hidden'); st.busy = false; startRecording();
+    }, 1000);
+  });
+
+  function stamp(){ const d=new Date(), p=n=>String(n).padStart(2,'0'); return `${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`; }
+  function finish(){
+    const type = st.rec && st.rec.mimeType || (st.ext==='mp4'?'video/mp4':'video/webm');
+    st.blob = new Blob(st.chunks, { type });
+    st.fname = `simongolf_${stamp()}.${st.ext}`;
+    const pb = $('#playback'); if (pb.src) URL.revokeObjectURL(pb.src);
+    pb.src = URL.createObjectURL(st.blob);
+    $('#saveMsg').textContent = st.ext === 'mp4'
+      ? '저장을 누르면 휴대폰 "다운로드" 폴더에 MP4로 저장돼요.'
+      : '이 폰은 WEBM 형식으로 저장돼요. 캡컷·인스타에서 열리지 않으면 저한테 보내주세요.';
+    $('#cam').classList.add('hidden'); $('#review').classList.remove('hidden');
+  }
+  $('#saveBtn').addEventListener('click', () => {
+    if (!st.blob) return;
+    const a = document.createElement('a'); a.href = URL.createObjectURL(st.blob); a.download = st.fname;
+    document.body.appendChild(a); a.click(); a.remove();
+    $('#saveMsg').textContent = '저장했어요. "내 파일 → 다운로드"에서 확인할 수 있어요.';
+  });
+  $('#shareBtn').addEventListener('click', async () => {
+    if (!st.blob) return;
+    try {
+      const file = new File([st.blob], st.fname, { type: st.blob.type });
+      if (navigator.canShare && navigator.canShare({ files:[file] })) { await navigator.share({ files:[file], title:'시몬골프 촬영본' }); }
+      else { $('#saveMsg').textContent = '이 폰에서는 공유가 안 돼요. "저장"을 눌러주세요.'; }
+    } catch(e){}
+  });
+  $('#retakeBtn').addEventListener('click', () => {
+    $('#playback').pause();
+    $('#review').classList.add('hidden'); $('#cam').classList.remove('hidden');
+    $('#rec-time').textContent = '00:00'; st.y = 0; apply(); place();
+  });
+
+  window.addEventListener('resize', () => { if (!$('#cam').classList.contains('hidden')) place(); });
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && st.stream) keepAwake(); });
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
+})();
+</script>
+</body>
+</html>
