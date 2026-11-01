@@ -77,6 +77,7 @@ class CameraActivity : ComponentActivity() {
     private var lastNs = 0L
     private var recStart = 0L
     private var counting = false
+    private var textH = 0
 
     private val prefs by lazy { getSharedPreferences(PREFS, MODE_PRIVATE) }
 
@@ -111,7 +112,7 @@ class CameraActivity : ComponentActivity() {
         text = TextView(this).apply {
             setTextColor(Color.WHITE); textSize = sizeSp.toFloat(); setTypeface(typeface, Typeface.BOLD)
             setLineSpacing(0f, 1.25f); setShadowLayer(6f, 0f, 2f, 0x99000000.toInt())
-            setPadding(dp(20f), 0, dp(18f), dp(400f))
+            setPadding(dp(20f), 0, dp(18f), 0)
             text = buildScript(prefs.getString("script", "") ?: "")
         }
         prompter.addView(text, FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
@@ -136,19 +137,20 @@ class CameraActivity : ComponentActivity() {
         // bottom controls
         val bar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(12f), dp(10f), dp(12f), dp(22f))
+            setPadding(dp(8f), dp(10f), dp(8f), dp(22f))
         }
         fun small(label: String, onClick: () -> Unit) = Button(this).apply {
-            text = label; textSize = 14f; setTextColor(Color.WHITE); isAllCaps = false; minWidth = 0; minimumWidth = 0
-            background = roundBg(0xD91A1C21.toInt(), dp(12f).toFloat()); setPadding(dp(12f), 0, dp(12f), 0)
+            text = label; textSize = 13f; setTextColor(Color.WHITE); isAllCaps = false; minWidth = 0; minimumWidth = 0
+            minHeight = 0; minimumHeight = 0; isSingleLine = true
+            background = roundBg(0xD91A1C21.toInt(), dp(12f).toFloat()); setPadding(dp(10f), 0, dp(10f), 0)
             setOnClickListener { onClick() }
         }
         val left = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         left.addView(small("대본") { if (recording == null) finish() }, LinearLayout.LayoutParams(WRAP_CONTENT, dp(44f)))
         pauseBtn = small("재생") { if (!counting) { if (playing) pause() else play() } }
-        left.addView(pauseBtn, LinearLayout.LayoutParams(WRAP_CONTENT, dp(44f)).apply { leftMargin = dp(6f) })
+        left.addView(pauseBtn, LinearLayout.LayoutParams(WRAP_CONTENT, dp(44f)).apply { leftMargin = dp(4f) })
         left.addView(small("전환") { if (recording == null) { front = !front; prefs.edit().putBoolean("front", front).apply(); bindCamera() } },
-            LinearLayout.LayoutParams(WRAP_CONTENT, dp(44f)).apply { leftMargin = dp(6f) })
+            LinearLayout.LayoutParams(WRAP_CONTENT, dp(44f)).apply { leftMargin = dp(4f) })
         bar.addView(left, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
 
         recBtn = FrameLayout(this).apply {
@@ -157,13 +159,13 @@ class CameraActivity : ComponentActivity() {
         }
         recDot = View(this).apply { background = GradientDrawable().apply { setColor(0xFFFF3B3B.toInt()); cornerRadius = dp(30f).toFloat() } }
         recBtn.addView(recDot, FrameLayout.LayoutParams(dp(56f), dp(56f), Gravity.CENTER))
-        bar.addView(recBtn, LinearLayout.LayoutParams(dp(76f), dp(76f)))
+        bar.addView(recBtn, LinearLayout.LayoutParams(dp(76f), dp(76f)).apply { leftMargin = dp(6f); rightMargin = dp(6f) })
 
         val right = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL or Gravity.END }
-        right.addView(small("－") { setSpeed(speed - 1) }, LinearLayout.LayoutParams(dp(44f), dp(44f)))
+        right.addView(small("－") { setSpeed(speed - 1) }, LinearLayout.LayoutParams(dp(40f), dp(44f)))
         speedView = TextView(this).apply { setTextColor(ACCENT); textSize = 18f; setTypeface(typeface, Typeface.BOLD); gravity = Gravity.CENTER }
-        right.addView(speedView, LinearLayout.LayoutParams(dp(36f), WRAP_CONTENT))
-        right.addView(small("＋") { setSpeed(speed + 1) }, LinearLayout.LayoutParams(dp(44f), dp(44f)))
+        right.addView(speedView, LinearLayout.LayoutParams(dp(30f), WRAP_CONTENT))
+        right.addView(small("＋") { setSpeed(speed + 1) }, LinearLayout.LayoutParams(dp(40f), dp(44f)))
         bar.addView(right, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
         root.addView(bar, FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT, Gravity.BOTTOM))
 
@@ -197,6 +199,11 @@ class CameraActivity : ComponentActivity() {
         (timeView.layoutParams as FrameLayout.LayoutParams).apply { topMargin = ph + dp(8f); rightMargin = dp(10f) }
         timeView.requestLayout()
         prompter.post {
+            // TextView must be as tall as the whole script (taller than the window) so every line can scroll through
+            val w = prompter.width
+            text.measure(View.MeasureSpec.makeMeasureSpec(w, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
+            text.layoutParams = FrameLayout.LayoutParams(MATCH_PARENT, text.measuredHeight)
+            textH = text.measuredHeight
             val mlp = marker.layoutParams as FrameLayout.LayoutParams
             mlp.topMargin = (lineTop() + text.lineHeight * 0.15f).toInt(); mlp.leftMargin = dp(4f)
             marker.layoutParams = mlp
@@ -227,7 +234,7 @@ class CameraActivity : ComponentActivity() {
 
     // ---------------- scrolling ----------------
     private fun lineTop() = maxOf(dp(12f).toFloat(), prompter.height * 0.14f)
-    private fun maxY() = maxOf(0f, (text.height - dp(400f)).toFloat())
+    private fun maxY() = maxOf(0f, (textH - text.lineHeight).toFloat())
     private fun apply() { text.translationY = lineTop() - y }
     private fun pxPerSec() = speed * text.textSize * 0.09f
 
