@@ -7,7 +7,12 @@ import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.media.AudioAttributes
+import android.media.SoundPool
 import android.os.Build
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
 import android.os.Bundle
 import android.os.SystemClock
 import android.provider.MediaStore
@@ -80,6 +85,20 @@ class CameraActivity : ComponentActivity() {
     private var textH = 0
 
     private val prefs by lazy { getSharedPreferences(PREFS, MODE_PRIVATE) }
+    private var soundPool: SoundPool? = null
+    private var popId = 0
+
+    // vibrate + "pop" sound on button taps (sound is skipped while recording so it doesn't end up in the video)
+    private fun feedback() {
+        try {
+            val vib: Vibrator? = if (Build.VERSION.SDK_INT >= 31)
+                (getSystemService(VIBRATOR_MANAGER_SERVICE) as VibratorManager).defaultVibrator
+            else @Suppress("DEPRECATION") (getSystemService(VIBRATOR_SERVICE) as Vibrator)
+            if (Build.VERSION.SDK_INT >= 29) vib?.vibrate(VibrationEffect.createPredefined(VibrationEffect.EFFECT_CLICK))
+            else vib?.vibrate(VibrationEffect.createOneShot(25, VibrationEffect.DEFAULT_AMPLITUDE))
+        } catch (_: Exception) {}
+        if (recording == null && popId != 0) soundPool?.play(popId, 1f, 1f, 1, 0, 1f)
+    }
 
     private val permLauncher = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { res ->
         if (res[Manifest.permission.CAMERA] == true) startCamera()
@@ -91,6 +110,10 @@ class CameraActivity : ComponentActivity() {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         speed = prefs.getInt("speed", 6); sizeSp = prefs.getInt("size", 30); phPct = prefs.getInt("ph", 34)
         front = prefs.getBoolean("front", true)
+        soundPool = SoundPool.Builder().setMaxStreams(2).setAudioAttributes(
+            AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build()).build()
+        popId = soundPool!!.load(this, R.raw.pop, 1)
         buildUi()
         val need = arrayOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO)
         if (need.all { ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED }) startCamera()
@@ -146,10 +169,10 @@ class CameraActivity : ComponentActivity() {
             setOnClickListener { onClick() }
         }
         val left = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        left.addView(small("대본") { if (recording == null) finish() }, LinearLayout.LayoutParams(WRAP_CONTENT, dp(44f)))
-        pauseBtn = small("재생") { if (!counting) { if (playing) pause() else play() } }
+        left.addView(small("대본") { feedback(); if (recording == null) finish() }, LinearLayout.LayoutParams(WRAP_CONTENT, dp(44f)))
+        pauseBtn = small("재생") { feedback(); if (!counting) { if (playing) pause() else play() } }
         left.addView(pauseBtn, LinearLayout.LayoutParams(WRAP_CONTENT, dp(44f)).apply { leftMargin = dp(4f) })
-        left.addView(small("전환") { if (recording == null) { front = !front; prefs.edit().putBoolean("front", front).apply(); bindCamera() } },
+        left.addView(small("전환") { feedback(); if (recording == null) { front = !front; prefs.edit().putBoolean("front", front).apply(); bindCamera() } },
             LinearLayout.LayoutParams(WRAP_CONTENT, dp(44f)).apply { leftMargin = dp(4f) })
         bar.addView(left, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
 
@@ -339,6 +362,8 @@ class CameraActivity : ComponentActivity() {
     }
 
     private fun stopRecording() { recording?.stop() }
+
+    override fun onDestroy() { super.onDestroy(); soundPool?.release(); soundPool = null }
 
     override fun onStop() {
         super.onStop()
