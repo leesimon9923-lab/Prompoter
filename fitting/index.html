@@ -1246,7 +1246,7 @@ try{ const bc=new BroadcastChannel('sf'); bc.onmessage=e=>{ if(e.data==='hello')
 addEventListener('resize',()=>{document.documentElement.style.setProperty('--hdrH',($('#hdr').offsetHeight+($('#planBar').classList.contains('hidden')?0:$('#planBar').offsetHeight))+'px'); renderPlot()});
 
 // 테스트용
-window.__sf={parseCSV,rowsToShots,addShots,decide,statsOf,diffSure,onPoll,readCSVText,get S(){return S},set S(v){S=v},renderAll,ST,BAT,PSLINE,fillReport};
+window.__sf={startDir,parseCSV,rowsToShots,addShots,decide,statsOf,diffSure,onPoll,readCSVText,get S(){return S},set S(v){S=v},renderAll,ST,BAT,PSLINE,fillReport};
 
 renderAll();
 autoReconnect(false);
