@@ -32,6 +32,8 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
+import android.widget.VideoView
+import java.io.File
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.AspectRatio
@@ -42,7 +44,7 @@ import androidx.camera.core.resolutionselector.AspectRatioStrategy
 import androidx.camera.core.resolutionselector.ResolutionSelector
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.video.FallbackStrategy
-import androidx.camera.video.MediaStoreOutputOptions
+import androidx.camera.video.FileOutputOptions
 import androidx.camera.video.Quality
 import androidx.camera.video.QualitySelector
 import androidx.camera.video.Recorder
@@ -83,6 +85,8 @@ class CameraActivity : ComponentActivity() {
     private var recStart = 0L
     private var counting = false
     private var textH = 0
+    private var lastTake: File? = null
+    private var review: FrameLayout? = null
 
     private val prefs by lazy { getSharedPreferences(PREFS, MODE_PRIVATE) }
     private var soundPool: SoundPool? = null
@@ -308,7 +312,7 @@ class CameraActivity : ComponentActivity() {
     }
 
     private fun onRecClick() {
-        if (counting) return
+        if (counting || review != null) return
         if (recording != null) { stopRecording(); return }
         counting = true
         y = 0f; apply()
@@ -328,14 +332,9 @@ class CameraActivity : ComponentActivity() {
     @SuppressLint("MissingPermission")
     private fun startRecording() {
         val vc = videoCapture ?: return
-        val name = "simongolf_" + SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
-        val cv = ContentValues().apply {
-            put(MediaStore.MediaColumns.DISPLAY_NAME, name)
-            put(MediaStore.MediaColumns.MIME_TYPE, "video/mp4")
-            if (Build.VERSION.SDK_INT >= 29) put(MediaStore.Video.Media.RELATIVE_PATH, "Movies/SimonGolf")
-        }
-        val opts = MediaStoreOutputOptions.Builder(contentResolver, MediaStore.Video.Media.EXTERNAL_CONTENT_URI)
-            .setContentValues(cv).build()
+        val tmp = File(cacheDir, "take_${System.currentTimeMillis()}.mp4")
+        lastTake = tmp
+        val opts = FileOutputOptions.Builder(tmp).build()
         var pending = vc.output.prepareRecording(this, opts)
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
             pending = pending.withAudioEnabled()
@@ -353,8 +352,8 @@ class CameraActivity : ComponentActivity() {
                     (recDot.background as GradientDrawable).cornerRadius = dp(30f).toFloat()
                     recDot.layoutParams = FrameLayout.LayoutParams(dp(56f), dp(56f), Gravity.CENTER)
                     pause()
-                    if (!ev.hasError()) Toast.makeText(this, "갤러리에 저장했어요 (동영상 > SimonGolf)", Toast.LENGTH_LONG).show()
-                    else Toast.makeText(this, "저장 실패: 오류 ${ev.error}", Toast.LENGTH_LONG).show()
+                    if (!ev.hasError() || ev.error == VideoRecordEvent.Finalize.ERROR_SOURCE_INACTIVE) showReview()
+                    else { Toast.makeText(this, "녹화 실패: 오류 ${ev.error}", Toast.LENGTH_LONG).show(); lastTake?.delete(); lastTake = null }
                 }
                 else -> {}
             }
@@ -363,7 +362,72 @@ class CameraActivity : ComponentActivity() {
 
     private fun stopRecording() { recording?.stop() }
 
-    override fun onDestroy() { super.onDestroy(); soundPool?.release(); soundPool = null }
+    // ---------------- review: nothing is saved until the user taps 저장 ----------------
+    private fun showReview() {
+        val f = lastTake ?: return
+        if (!f.exists() || f.length() == 0L) { Toast.makeText(this, "녹화된 영상이 없어요", Toast.LENGTH_SHORT).show(); return }
+        val root = frame.parent as FrameLayout
+        val box = FrameLayout(this).apply { setBackgroundColor(0xF20E0F12.toInt()); isClickable = true }
+        val vv = VideoView(this).apply {
+            setVideoPath(f.absolutePath)
+            setOnPreparedListener { mp -> mp.isLooping = true; start() }
+        }
+        val vw = frame.width; val vh = frame.height
+        box.addView(vv, FrameLayout.LayoutParams((vw * 0.78f).toInt(), (vh * 0.78f).toInt(), Gravity.CENTER_HORIZONTAL or Gravity.TOP).apply { topMargin = dp(24f) })
+        val panel = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16f), dp(12f), dp(16f), dp(24f)) }
+        panel.addView(TextView(this).apply {
+            text = "이 영상을 저장할까요?"; setTextColor(Color.WHITE); textSize = 18f; setTypeface(typeface, Typeface.BOLD); gravity = Gravity.CENTER
+        }, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
+        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, dp(12f), 0, 0) }
+        fun big(label: String, bg: Int, fg: Int, onClick: () -> Unit) = Button(this).apply {
+            text = label; textSize = 17f; setTextColor(fg); isAllCaps = false; setTypeface(typeface, Typeface.BOLD)
+            background = roundBg(bg, dp(14f).toFloat()); setOnClickListener { feedback(); onClick() }
+        }
+        row.addView(big("다시 찍기 (삭제)", PANEL, Color.WHITE) { vv.stopPlayback(); f.delete(); lastTake = null; closeReview() },
+            LinearLayout.LayoutParams(0, dp(58f), 1f).apply { rightMargin = dp(10f) })
+        row.addView(big("저장", ACCENT, 0xFF111111.toInt()) { vv.stopPlayback(); saveToGallery(f); closeReview() },
+            LinearLayout.LayoutParams(0, dp(58f), 1f))
+        panel.addView(row)
+        box.addView(panel, FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT, Gravity.BOTTOM))
+        root.addView(box, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
+        review = box
+    }
+
+    private fun closeReview() {
+        review?.let { (it.parent as? FrameLayout)?.removeView(it) }
+        review = null
+        y = 0f; apply()
+        timeView.text = "00:00"
+    }
+
+    private fun saveToGallery(f: File) {
+        try {
+            val name = "simongolf_" + SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date()) + ".mp4"
+            val cv = ContentValues().apply {
+                put(MediaStore.MediaColumns.DISPLAY_NAME, name)
+                put(MediaStore.MediaColumns.MIME_TYPE, "video/mp4")
+                if (Build.VERSION.SDK_INT >= 29) {
+                    put(MediaStore.Video.Media.RELATIVE_PATH, "Movies/SimonGolf")
+                    put(MediaStore.Video.Media.IS_PENDING, 1)
+                }
+            }
+            val uri = contentResolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, cv) ?: throw Exception("insert")
+            contentResolver.openOutputStream(uri)!!.use { out -> f.inputStream().use { it.copyTo(out) } }
+            if (Build.VERSION.SDK_INT >= 29) {
+                cv.clear(); cv.put(MediaStore.Video.Media.IS_PENDING, 0)
+                contentResolver.update(uri, cv, null, null)
+            }
+            f.delete(); lastTake = null
+            Toast.makeText(this, "갤러리에 저장했어요 (동영상 > SimonGolf)", Toast.LENGTH_LONG).show()
+        } catch (e: Exception) {
+            Toast.makeText(this, "저장 실패: ${e.message}", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy(); soundPool?.release(); soundPool = null
+        cacheDir.listFiles()?.filter { it.name.startsWith("take_") }?.forEach { it.delete() }
+    }
 
     override fun onStop() {
         super.onStop()
