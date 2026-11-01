@@ -515,15 +515,15 @@ const FIELDS={
   offline:{syn:['offline','carryoffline','carrylateral','lateral','carrydeviation','deviation','벗어난거리','좌우편차','좌우거리'],not:['total','각도','총']},
   peak:{syn:['peakheight','apex','maxheight','height','최고높이','최고점']},
   descent:{syn:['descentangle','landingangle','descent','하강각도','낙하각','착지각']},
-  aoa:{syn:['angleofattack','attackangle','aoa','이택각도','어택각도','어택앵글','어택각']},
-  path:{syn:['clubpath','path','클럽경로','클럽패스'],not:['face','페이스']},
+  aoa:{syn:['angleofattack','attackangle','vertpath','verticalpath','aoa','이택각도','어택각도','어택앵글','어택각']},
+  path:{syn:['clubpath','horizpath','horizontalpath','path','클럽경로','클럽패스'],not:['face','페이스','vert','수직']},
   face:{syn:['facetotarget','faceangle','타겟대비페이스앵글','페이스앵글','face'],not:['path','topath','패스','경로']},
   facePath:{syn:['facetopath','path대비페이스앵글','패스대비페이스앵글']},
   lie:{syn:['lieangle','dynamiclie','impactlie','deliveredlie','lie','라이']},
   loft:{syn:['dynamicloft','impactloft','deliveredloft','loft','로프트'],not:['spin','스핀']},
   closure:{syn:['closurerate','폐쇄율']},
-  impH:{syn:['타점좌우','impacthorizontal','horizontalimpact','impactpointh','impacth','faceimpacthorizontal','h임팩트','타점']},
-  impV:{syn:['타점상하','impactvertical','verticalimpact','impactpointv','impactv','faceimpactvertical','v임팩트']}
+  impH:{syn:['타점좌우','horizimpact','impacthorizontal','horizontalimpact','impactpointh','impacth','faceimpacthorizontal','h임팩트','타점']},
+  impV:{syn:['타점상하','vertimpact','impactvertical','verticalimpact','impactpointv','impactv','faceimpactvertical','v임팩트']}
 };
 function mapHeader(hdr){
   const nh=hdr.map(norm), m={}, used=new Set();
@@ -576,7 +576,7 @@ function rowsToShots(rows){
     const row=rows[r]; if(row.length<hdr.length-1) continue;          // 덜 써진 줄
     const clubTxt=m.club?String(row[m.club.i]||'').trim():'';
     if(SUMMARY.test(clubTxt)||SUMMARY.test(String(row[0]||'').trim())) continue;  // 평균·표준편차 줄
-    const g=k=>m[k]?num(row[m[k].i]):null;
+    const g=k=>{ if(!m[k]) return null; const v=num(row[m[k].i]); return v!=null&&Math.abs(v)>=1e6?null:v };   // FSX: 못 잰 값 16777215
     const dk=k=>{const v=g(k);if(v==null)return null;const u=unitDist(m[k].unit);return u==='yd'?v*0.9144:u==='ft'?v*0.3048:v};
     const peakU=m.peak?unitDist(m.peak.unit):'m';
     const s={t:Date.now(),club:clubTxt,
@@ -589,6 +589,8 @@ function rowsToShots(rows){
     if(m.impH && /타점/.test(hdr[m.impH.i]) && !/좌우/.test(hdr[m.impH.i])){ const [hh,vv]=splitImpact(row[m.impH.i]); s.impH=hh; if(s.impV==null) s.impV=vv; }
     if(s.totalSpin==null && s.backSpin!=null) s.totalSpin=Math.round(Math.hypot(s.backSpin,s.sideSpin||0));
     if(s.smash==null && s.ballSpeed && s.clubSpeed) s.smash=s.ballSpeed/s.clubSpeed;
+    if(isNum(s.smash)&&(s.smash<0.5||s.smash>1.7)) s.smash=null;
+    if(s.lie==null) s.lieTxt=''; if(s.impH==null&&s.impV==null) s.impTxt='';
     if(s.ballSpeed==null && s.carry==null) continue;
     if(s.carry!=null&&s.carry<1&&(s.ballSpeed||0)<1) continue;
     out.push(s);
