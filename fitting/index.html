@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>시몬골프 피팅 화면</title>
+<style>
+  :root{ --bg:#0f1115; --panel:#181b21; --line:#2a2e36; --fg:#f2f2f0; --dim:#8d929c; --accent:#FFD43B;
+         --good:#3ecf8e; --warn:#ff9f43; --bad:#ff5d5d;
+         --c0:#9aa3ad; --c1:#4dabf7; --c2:#ff922b; --c3:#69db7c; --c4:#da77f2; --c5:#ffd43b; }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--fg);font-family:-apple-system,"Pretendard","Malgun Gothic","Apple SD Gothic Neo","Noto Sans KR",sans-serif}
+  button,input,select{font:inherit;color:inherit}
+  button{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px 14px;cursor:pointer}
+  button:hover{border-color:#3b404a}
+  button.primary{background:var(--accent);color:#111;border:none;font-weight:800}
+  input,select{background:#0c0e12;border:1px solid var(--line);border-radius:10px;padding:8px 10px}
+  .hidden{display:none!important}
+
+  header{display:flex;align-items:center;gap:12px;padding:12px 20px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+  header h1{font-size:20px;margin:0 8px 0 0;white-space:nowrap}
+  header h1 b{color:var(--accent)}
+  #status{font-size:14px;padding:6px 12px;border-radius:20px;background:#2a1d1d;color:#ffb3b3}
+  #status.on{background:#16281f;color:#8ff0bf}
+  .sp{flex:1}
+
+  main{display:grid;grid-template-columns:minmax(380px,1fr) minmax(520px,1.5fr);gap:16px;padding:16px 20px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:16px}
+  .card h2{font-size:15px;color:var(--dim);margin:0 0 12px;font-weight:700}
+
+  /* last shot */
+  #last .who{font-size:15px;color:var(--dim);margin-bottom:10px}
+  #last .who b{color:var(--fg)}
+  .tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+  .tile{background:#0f1216;border:1px solid var(--line);border-radius:14px;padding:12px 14px}
+  .tile .k{font-size:14px;color:var(--dim)}
+  .tile .v{font-size:40px;font-weight:900;line-height:1.15;margin-top:2px}
+  .tile .v small{font-size:16px;color:var(--dim);font-weight:700;margin-left:3px}
+  .tile .n{font-size:13px;margin-top:4px;color:var(--dim);min-height:18px}
+  .tile.good{border-color:#245c43}.tile.good .n{color:var(--good)}
+  .tile.warn{border-color:#6b4520}.tile.warn .n{color:var(--warn)}
+  .tile.big{grid-column:span 3}
+  .tile.big .v{font-size:64px}
+
+  /* options */
+  #opts{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+  .opt{display:flex;align-items:center;gap:8px;padding:10px 14px;border-radius:12px;border:2px solid var(--line);background:#0f1216;cursor:pointer;font-weight:700}
+  .opt .dot{width:12px;height:12px;border-radius:50%}
+  .opt.on{border-color:var(--accent);background:#1f1c0e}
+  .opt .cnt{font-size:12px;color:var(--dim);font-weight:600}
+
+  table{width:100%;border-collapse:collapse;font-size:16px}
+  th,td{padding:10px 8px;text-align:right;border-bottom:1px solid var(--line)}
+  th:first-child,td:first-child{text-align:left;color:var(--dim);font-weight:600}
+  thead th{color:var(--fg);font-size:15px}
+  td.best{color:#111;background:var(--good);font-weight:900;border-radius:6px}
+  .help{font-size:12px;color:var(--dim)}
+
+  #rec{margin-top:16px;border:2px solid var(--accent);background:#1d1a0c}
+  #rec .top{font-size:15px;color:var(--accent);font-weight:800}
+  #rec .name{font-size:32px;font-weight:900;margin:6px 0 10px}
+  #rec ul{margin:0;padding-left:20px;font-size:17px;line-height:1.7}
+  #rec .src{font-size:12px;color:var(--dim);margin-top:10px}
+
+  #shotlist{max-height:180px;overflow:auto;font-size:14px}
+  #shotlist div{display:flex;justify-content:space-between;align-items:center;padding:4px 2px;border-bottom:1px solid #20242b}
+  #shotlist div.ex{opacity:.35;text-decoration:line-through}
+  #shotlist button{padding:2px 8px;font-size:12px}
+
+  /* modal */
+  .modal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:20}
+  .modal .box{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:20px;width:min(760px,94vw);max-height:88vh;overflow:auto}
+  .modal h3{margin:0 0 12px}
+  .steps li{margin:6px 0;line-height:1.6}
+  code{background:#0c0e12;padding:2px 6px;border-radius:6px}
+  .row{display:flex;gap:8px;align-items:center;margin:8px 0;flex-wrap:wrap}
+
+  /* print report */
+  #report{display:none}
+  @media print{
+    body{background:#fff;color:#111}
+    header,main,.modal{display:none!important}
+    #report{display:block;padding:10mm;font-size:12pt;color:#111}
+    #report h1{font-size:20pt;margin:0}
+    #report table{font-size:11pt}
+    #report th,#report td{border-bottom:1px solid #ccc;color:#111}
+    #report td.best{background:#d6f5e6;color:#111}
+    #report .rbox{border:2px solid #111;border-radius:8px;padding:10px 14px;margin:12px 0}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1><b>시몬골프</b> 피팅</h1>
+  <input id="cust" placeholder="손님 이름" style="width:140px">
+  <select id="clubType">
+    <option value="driver">드라이버</option>
+    <option value="wood">우드·유틸</option>
+    <option value="iron">아이언</option>
+    <option value="wedge">웨지</option>
+  </select>
+  <span id="status">GC쿼드 연결 안 됨</span>
+  <span class="sp"></span>
+  <button class="primary" id="connectBtn">GC쿼드 연결</button>
+  <button id="invBtn">재고 관리</button>
+  <button id="newBtn">새 손님</button>
+  <button id="printBtn">리포트 저장</button>
+  <button id="modeBtn">자세히 보기</button>
+  <button id="moreBtn">⋯</button>
+</header>
+
+<main>
+  <section>
+    <div class="card" id="last">
+      <h2>방금 친 샷</h2>
+      <div class="who" id="lastWho">아직 샷이 없어요. 공을 치면 여기에 바로 나와요.</div>
+      <div class="tiles" id="tiles"></div>
+    </div>
+    <div class="card" style="margin-top:16px">
+      <h2>탄착 그림 (위로 갈수록 멀리, 가운데 선이 목표 방향)</h2>
+      <svg id="plot" viewBox="0 0 500 420" style="width:100%;height:auto"></svg>
+    </div>
+  </section>
+
+  <section>
+    <div class="card">
+      <h2>지금 치는 클럽 고르기 → 이후 샷은 선택한 클럽으로 기록돼요</h2>
+      <div id="opts"></div>
+      <svg id="bars" viewBox="0 0 640 10" style="width:100%;height:auto;margin-bottom:8px"></svg>
+      <table id="cmp"></table>
+      <div class="help" style="margin-top:6px">초록색 칸 = 그 항목에서 가장 좋은 클럽 · 흩어짐 = 숫자가 작을수록 일정해요</div>
+    </div>
+    <div class="card" id="rec">
+      <div class="top">추천</div>
+      <div class="name" id="recName">클럽별로 3샷 이상 치면 추천이 나와요</div>
+      <ul id="recWhy"></ul>
+      <div class="src" id="recSrc"></div>
+    </div>
+    <div class="card" style="margin-top:16px">
+      <h2>샷 기록 (미스샷은 '제외'를 누르면 평균에서 빠져요)</h2>
+      <div id="shotlist"></div>
+    </div>
+  </section>
+</main>
+
+<!-- connect help -->
+<div class="modal hidden" id="connectModal"><div class="box">
+  <h3>GC쿼드 연결하기 (처음 한 번만)</h3>
+  <ol class="steps">
+    <li>FSX 2020에서 <b>설정 → General Settings → On-Screen Data → "Write Shots CSV"</b>를 켜세요.</li>
+    <li>아래 <b>연결 도우미 받기</b>를 눌러 받은 파일 <code>시몬골프_연결도우미.bat</code>을 바탕화면에 두고 <b>더블클릭</b>하세요. 검은 창이 뜨면 그대로 켜두세요. (FSX가 저장하는 샷 파일을 '문서\SimonFitting' 폴더로 계속 복사해줘요)</li>
+    <li>공을 한 번 치세요. 그다음 <b>샷 파일 선택</b>을 누르고 <code>문서 → SimonFitting → LastShot.csv</code>를 고르세요.</li>
+    <li>크롬이 "파일 보기 허용"을 물으면 <b>허용</b>(가능하면 "방문할 때마다 허용")을 누르세요.</li>
+  </ol>
+  <div class="row">
+    <a id="batLink" download="시몬골프_연결도우미.bat"><button>연결 도우미 받기</button></a>
+    <button class="primary" id="pickBtn">샷 파일 선택</button>
+    <button id="demoBtn">연결 없이 연습 (가짜 샷)</button>
+    <span class="sp"></span>
+    <button id="closeConnect">닫기</button>
+  </div>
+  <p class="help">Shots.csv(지난 세션 전체 기록)가 있으면 이 창에 끌어다 놓아도 한 번에 불러와요.</p>
+  <div id="pickErr" class="help" style="color:#ff9f9f"></div>
+</div></div>
+
+<!-- inventory -->
+<div class="modal hidden" id="invModal"><div class="box">
+  <h3>시타 클럽 재고</h3>
+  <p class="help">여기 적어둔 클럽은 클럽 고르기 버튼에서 바로 고를 수 있어요. 컴퓨터에 저장돼요.</p>
+  <div class="row">
+    <select id="invType"><option value="driver">드라이버</option><option value="wood">우드·유틸</option><option value="iron">아이언</option><option value="wedge">웨지</option></select>
+    <input id="invName" placeholder="예: 벤투스 블루 6S / 페루가 60S" style="flex:1">
+    <select id="invL"><option value="">탄도 -</option><option value="1">탄도 낮음</option><option value="2">탄도 중간</option><option value="3">탄도 높음</option></select>
+    <select id="invS"><option value="">스핀 -</option><option value="1">스핀 적음</option><option value="2">스핀 중간</option><option value="3">스핀 많음</option></select>
+    <input id="invW" placeholder="무게 g" style="width:80px">
+    <button class="primary" id="invAdd">추가</button>
+  </div>
+  <div id="invList"></div>
+  <div class="row"><span class="sp"></span><button id="closeInv">닫기</button></div>
+</div></div>
+
+<!-- more / column check -->
+<div class="modal hidden" id="moreModal"><div class="box">
+  <h3>설정·확인</h3>
+  <div class="row">거리 단위(원본 파일): <select id="uDist"><option value="auto">자동</option><option value="yd">야드</option><option value="m">미터</option></select>
+  속도 단위(원본 파일): <select id="uSpd"><option value="auto">자동</option><option value="mph">mph</option><option value="ms">m/s</option></select></div>
+  <h3 style="margin-top:16px">파일 칸 인식 결과</h3>
+  <p class="help">샷 파일의 어떤 칸을 무엇으로 읽었는지 보여줘요. 이상하면 이 화면을 캡처해서 보내주세요.</p>
+  <pre id="colmap" style="white-space:pre-wrap;font-size:13px;background:#0c0e12;padding:10px;border-radius:10px"></pre>
+  <div class="row"><button id="clearAll">모든 기록 지우기</button><span class="sp"></span><button id="closeMore">닫기</button></div>
+</div></div>
+
+<div id="report"></div>
+
+<script>
+(()=>{
+const $=s=>document.querySelector(s);
+const store={get(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
+const COLORS=['--c0','--c1','--c2','--c3','--c4','--c5'].map(v=>getComputedStyle(document.documentElement).getPropertyValue(v).trim());
+
+// ---------------- state ----------------
+let S=store.get('sf_state',null)||{cust:'',clubType:'driver',options:[{name:'현재 클럽'}],active:0,shots:[]};
+let INV=store.get('sf_inv',[]);
+let SET=store.get('sf_set',{uDist:'auto',uSpd:'auto'});
+const save=()=>store.set('sf_state',S);
+let colInfo='아직 파일을 읽지 않았어요.';
+
+// ---------------- CSV ----------------
+function parseCSV(text){
+  const rows=[];let row=[],f='',q=false;
+  for(let i=0;i<text.length;i++){const c=text[i];
+    if(q){ if(c=='"'){ if(text[i+1]=='"'){f+='"';i++} else q=false } else f+=c; }
+    else if(c=='"') q=true; else if(c==','||c=='\t'||c==';'){row.push(f);f=''}
+    else if(c=='\n'){row.push(f);rows.push(row);row=[];f=''} else if(c!='\r') f+=c;
+  }
+  if(f!==''||row.length){row.push(f);rows.push(row)}
+  return rows.filter(r=>r.some(x=>x.trim()!==''));
+}
+const norm=s=>s.toLowerCase().replace(/\(.*?\)|\[.*?\]/g,'').replace(/[^a-z0-9가-힣]/g,'');
+const FIELDS={
+  club:{syn:['club','clubname','클럽'],not:['speed','path','스피드','경로']},
+  ballSpeed:{syn:['ballspeed','볼스피드','볼속도'],kind:'spd'},
+  clubSpeed:{syn:['clubspeed','clubheadspeed','headspeed','클럽스피드','헤드스피드'],kind:'spd'},
+  smash:{syn:['smashfactor','smash','efficiency','스매시팩터','스매시']},
+  launch:{syn:['launchangle','vla','verticallaunchangle','verticallaunch','launch','상승각도','발사각'],not:['direction','horizontal','hla']},
+  direction:{syn:['launchdirection','horizontallaunchangle','hla','azimuth','sideangle','좌우각도']},
+  backSpin:{syn:['backspin','백스핀']},
+  sideSpin:{syn:['sidespin','사이드스핀']},
+  totalSpin:{syn:['totalspin','총스핀량','총스핀','spinrate','spin','스핀'],not:['back','side','axis','rate2','백','사이드']},
+  spinAxis:{syn:['spinaxis','axis','스핀축']},
+  carry:{syn:['carrydistance','carry','비행거리','캐리'],not:['offline','lateral','deviation','side']},
+  total:{syn:['totaldistance','total','총합계','총거리'],not:['offline','spin','lateral','스핀']},
+  offline:{syn:['offline','carryoffline','carrylateral','lateral','carrydeviation','deviation','벗어난거리','좌우편차'],not:['total','각도']},
+  peak:{syn:['peakheight','apex','height','최고높이','최고점']},
+  descent:{syn:['descentangle','landingangle','descent','하강각도','낙하각']},
+  aoa:{syn:['angleofattack','attackangle','aoa','이택각도','어택각도','어택앵글']},
+  path:{syn:['clubpath','path','클럽경로'],not:['face','페이스']},
+  face:{syn:['facetotarget','faceangle','타겟대비페이스앵글','페이스앵글','face'],not:['path','to path']},
+  lie:{syn:['lieangle','dynamiclie','impactlie','deliveredlie','lie','라이']},
+  loft:{syn:['dynamicloft','impactloft','deliveredloft','loft','로프트']},
+  impH:{syn:['impacthorizontal','horizontalimpact','impactpointh','impacth','faceimpacthorizontal','h임팩트','타점']},
+  facePath:{syn:['facetopath','path대비페이스앵글']},
+  closure:{syn:['closurerate','폐쇄율']},
+  impV:{syn:['impactvertical','verticalimpact','impactpointv','impactv','faceimpactvertical','v임팩트']}
+};
+function mapHeader(hdr){
+  const m={};const used=new Set();
+  const nh=hdr.map(norm);
+  for(const [k,def] of Object.entries(FIELDS)){
+    let idx=-1;
+    for(const s of def.syn){ // exact first, then contains
+      idx=nh.findIndex((h,i)=>!used.has(i)&&h===s&&!(def.not||[]).some(n=>h.includes(n)));
+      if(idx<0) idx=nh.findIndex((h,i)=>!used.has(i)&&h.includes(s)&&!(def.not||[]).some(n=>h.includes(n)));
+      if(idx>=0) break;
+    }
+    if(idx>=0){m[k]={i:idx,unit:(hdr[idx].match(/\(([^)]*)\)|\[([^\]]*)\]/)||[])[1]||''};used.add(idx)}
+  }
+  return m;
+}
+const num=v=>{if(v==null)return null;const m=String(v).match(/-?\d+(\.\d+)?/);if(!m)return null;let x=parseFloat(m[0]);
+  const t=String(v).toLowerCase();
+  // 왼쪽/아래/아웃-인/닫힘/힐/낮음 → 음수, 오른쪽/위/인-아웃/열림/토우/높음 → 양수 (부호가 이미 있으면 그대로)
+  if(!/^\s*-/.test(t)&&x>0){ if(/좌|왼|left|아래|down|아웃-인|아웃인|out-in|outtoin|닫힘|closed|힐|heel|낮음|low|\bl\b/.test(t)) x=-x; }
+  return isFinite(x)?x:null};
+// "9mm 토우 | 2mm 낮음" 같은 타점 칸을 좌우/상하로 나눠 읽기
+const splitImpact=v=>{ if(v==null) return [null,null]; const p=String(v).split('|'); if(p.length<2) return [num(p[0]),null]; return [num(p[0]),num(p[1])] };
+function unitDist(u){u=(u||'').toLowerCase(); if(SET.uDist!=='auto')return SET.uDist; if(/yd|yard/.test(u))return'yd'; if(/^m$|meter|metre/.test(u))return'm'; return 'yd'}
+function unitSpd(u){u=(u||'').toLowerCase(); if(SET.uSpd!=='auto')return SET.uSpd; if(/mph/.test(u))return'mph'; if(/m\/s|mps|ms/.test(u))return'ms'; if(/km/.test(u))return'kmh'; return 'mph'}
+function rowsToShots(rows){
+  if(rows.length<2) return [];
+  let h=0; // header = first row with mostly text
+  const hdr=rows[h]; const m=mapHeader(hdr);
+  let start=1;
+  // optional units row
+  if(rows[1] && rows[1].filter(x=>num(x)!==null).length < rows[1].length/3){
+    rows[1].forEach((u,i)=>{for(const k in m){ if(m[k].i===i && !m[k].unit) m[k].unit=u }}); start=2;
+  }
+  colInfo=Object.entries(m).map(([k,v])=>`${k.padEnd(10)} ← "${hdr[v.i]}"${v.unit?'  ['+v.unit+']':''}`).join('\n')+
+    '\n\n못 찾은 항목: '+Object.keys(FIELDS).filter(k=>!m[k]).join(', ')+'\n\n전체 칸: '+hdr.join(' | ');
+  const out=[];
+  for(let r=start;r<rows.length;r++){
+    const row=rows[r]; const g=k=>m[k]?num(row[m[k].i]):null;
+    const dk=k=>{const v=g(k);if(v==null)return null;return unitDist(m[k].unit)==='yd'?v*0.9144:v};
+    const sk=k=>{const v=g(k);if(v==null)return null;const u=unitSpd(m[k].unit);return u==='mph'?v*0.44704:u==='kmh'?v/3.6:v};
+    const s={t:Date.now(),
+      club:m.club?row[m.club.i]:'',
+      ballSpeed:sk('ballSpeed'),clubSpeed:sk('clubSpeed'),smash:g('smash'),
+      launch:g('launch'),direction:g('direction'),backSpin:g('backSpin'),sideSpin:g('sideSpin'),totalSpin:g('totalSpin'),
+      carry:dk('carry'),total:dk('total'),offline:dk('offline'),peak:dk('peak'),descent:g('descent'),
+      aoa:g('aoa'),path:g('path'),face:g('face'),lie:g('lie'),loft:g('loft'),impH:g('impH'),impV:g('impV')};
+    if(m.impH && hdr[m.impH.i] && /타점/.test(hdr[m.impH.i])){ const [h,vv]=splitImpact(row[m.impH.i]); s.impH=h; if(s.impV==null) s.impV=vv; }
+    s.facePath=g('facePath');
+    if(s.totalSpin==null && s.backSpin!=null) s.totalSpin=Math.round(Math.hypot(s.backSpin,s.sideSpin||0));
+    if(s.smash==null && s.ballSpeed && s.clubSpeed) s.smash=s.ballSpeed/s.clubSpeed;
+    if(s.ballSpeed==null && s.carry==null) continue;
+    out.push(s);
+  }
+  return out;
+}
+
+// ---------------- stats ----------------
+const vals=(arr,k)=>arr.map(s=>s[k]).filter(v=>v!=null&&isFinite(v));
+const mean=a=>a.length?a.reduce((x,y)=>x+y,0)/a.length:null;
+const sd=a=>{if(a.length<2)return null;const m=mean(a);return Math.sqrt(a.reduce((x,y)=>x+(y-m)**2,0)/(a.length-1))};
+const shotsOf=i=>S.shots.filter(s=>s.opt===i&&!s.ex);
+function statsOf(i){
+  const a=shotsOf(i); const o={n:a.length};
+  for(const k of ['carry','total','ballSpeed','clubSpeed','smash','launch','totalSpin','offline','peak','descent','aoa','path','face','loft','lie','impH','impV']) o[k]=mean(vals(a,k));
+  o.carrySD=sd(vals(a,'carry')); o.offSD=sd(vals(a,'offline'));
+  const off=vals(a,'offline'); o.offAbs=off.length?mean(off.map(Math.abs)):null;
+  return o;
+}
+// TrackMan optimal driver window by club speed (mph) — source: MyGolfSpy
+function driverWindow(csMs){
+  if(csMs==null) return null; const mph=csMs/0.44704;
+  if(mph>=105) return {l:[10,16],s:[1750,2300],label:'105mph 이상'};
+  if(mph>=97)  return {l:[12,16],s:[1950,2500],label:'97~104mph'};
+  if(mph>=84)  return {l:[13,16],s:[2400,2700],label:'84~96mph'};
+  if(mph>=72)  return {l:[14,19],s:[2600,3000],label:'72~83mph'};
+  return {l:[14,19],s:[2900,3400],label:'72mph 미만'};
+}
+
+// 재고 태그(탄도·스핀)로 다음에 쳐볼 클럽 고르기
+function nextTry(b){
+  const tried=new Set(S.options.map(o=>o.name));
+  const pool=INV.filter(x=>x.type===S.clubType && !tried.has(x.name) && (x.l||x.s));
+  if(!pool.length || S.clubType!=='driver') return null;
+  const w=driverWindow(b.clubSpeed); if(!w||b.totalSpin==null||b.launch==null) return null;
+  const cur=INV.find(x=>x.name===S.options[b.i].name)||{l:2,s:2};
+  let wantS=0,wantL=0,reason=[];
+  if(b.totalSpin>w.s[1]){wantS=-1;reason.push('스핀을 줄이려면')} else if(b.totalSpin<w.s[0]){wantS=1;reason.push('스핀을 늘리려면')}
+  if(b.launch<w.l[0]){wantL=1;reason.push('탄도를 높이려면')} else if(b.launch>w.l[1]){wantL=-1;reason.push('탄도를 낮추려면')}
+  if(!wantS&&!wantL) return null;
+  const score=x=>(wantS?wantS*((x.s||2)-(cur.s||2)):0)+(wantL?wantL*((x.l||2)-(cur.l||2)):0);
+  pool.sort((a,c)=>score(c)-score(a));
+  return score(pool[0])>0?{item:pool[0],reason:reason.join(', ')}:null;
+}
+
+// ---------------- render ----------------
+const f0=v=>v==null?'–':Math.round(v).toLocaleString();
+const f1=v=>v==null?'–':(Math.round(v*10)/10).toFixed(1);
+const f2=v=>v==null?'–':v.toFixed(2);
+function lr(v){ if(v==null) return '–'; const a=Math.abs(v); return a<0.5?'정중앙':(v<0?'왼쪽 ':'오른쪽 ')+f1(a)+'m' }
+
+function renderOptions(){
+  const box=$('#opts'); box.innerHTML='';
+  S.options.forEach((o,i)=>{
+    const d=document.createElement('div'); d.className='opt'+(i===S.active?' on':'');
+    d.innerHTML=`<span class="dot" style="background:${COLORS[i%6]}"></span>${esc(o.name)} <span class="cnt">${shotsOf(i).length}샷</span>`;
+    d.onclick=()=>{S.active=i;save();renderAll()};
+    d.ondblclick=()=>renameOpt(i);
+    box.appendChild(d);
+  });
+  const add=document.createElement('button'); add.textContent='+ 시타 클럽 추가'; add.onclick=addOpt; box.appendChild(add);
+}
+function esc(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
+
+function pickerDialog(title,cb){
+  const list=INV.filter(x=>x.type===S.clubType);
+  const m=document.createElement('div'); m.className='modal';
+  m.innerHTML=`<div class="box"><h3>${title}</h3>
+   <div class="row" style="flex-wrap:wrap">${list.map((x,i)=>`<button data-i="${i}">${esc(x.name)}</button>`).join('')||'<span class="help">재고에 등록된 클럽이 없어요. 아래에 직접 적어주세요.</span>'}</div>
+   <div class="row"><input id="pkName" placeholder="직접 입력" style="flex:1"><button class="primary" id="pkOk">확인</button><button id="pkNo">취소</button></div></div>`;
+  document.body.appendChild(m);
+  m.querySelectorAll('[data-i]').forEach(b=>b.onclick=()=>{cb(list[+b.dataset.i].name);m.remove()});
+  m.querySelector('#pkOk').onclick=()=>{const v=m.querySelector('#pkName').value.trim(); if(v){cb(v);m.remove()}};
+  m.querySelector('#pkNo').onclick=()=>m.remove();
+  setTimeout(()=>m.querySelector('#pkName').focus(),50);
+}
+function addOpt(){ if(S.options.length>=6) return; pickerDialog('시타할 클럽 고르기',name=>{S.options.push({name});S.active=S.options.length-1;save();renderAll()}) }
+function renameOpt(i){ pickerDialog('클럽 이름 바꾸기',name=>{S.options[i].name=name;save();renderAll()}) }
+
+function tile(k,v,unit,note,cls='',big=false){return `<div class="tile ${cls} ${big?'big':''}"><div class="k">${k}</div><div class="v">${v}<small>${unit}</small></div><div class="n">${note||''}</div></div>`}
+function renderLast(){
+  const s=S.shots[S.shots.length-1];
+  if(!s){ $('#tiles').innerHTML=''; return }
+  $('#lastWho').innerHTML=`<b>${esc(S.options[s.opt]?.name||'')}</b> · ${S.shots.filter(x=>x.opt===s.opt).length}번째 샷`;
+  let lc='',sc='',ln='',sn='';
+  if(S.clubType==='driver'){
+    const w=driverWindow(s.clubSpeed);
+    if(w&&s.launch!=null){ const ok=s.launch>=w.l[0]&&s.launch<=w.l[1]; lc=ok?'good':'warn'; ln=ok?'적정 범위':(s.launch<w.l[0]?'낮아요':'높아요')+` (적정 ${w.l[0]}~${w.l[1]}°)` }
+    if(w&&s.totalSpin!=null){ const ok=s.totalSpin>=w.s[0]&&s.totalSpin<=w.s[1]; sc=ok?'good':'warn'; sn=ok?'적정 범위':(s.totalSpin<w.s[0]?'적어요':'많아요')+` (적정 ${w.s[0]}~${w.s[1]})` }
+  }
+  $('#tiles').innerHTML=
+    tile('총거리',f0(s.total??s.carry),'m',s.total!=null?`캐리 ${f0(s.carry)}m`:'', '',true)+
+    tile('볼스피드',f1(s.ballSpeed),'m/s',s.clubSpeed!=null?`헤드 ${f1(s.clubSpeed)}m/s`:'')+
+    tile('발사각',f1(s.launch),'°',ln,lc)+
+    tile('스핀',f0(s.totalSpin),'rpm',sn,sc)+
+    tile('좌우',lr(s.offline).replace(/m$/,''),s.offline!=null&&Math.abs(s.offline)>=0.5?'m':'','')+
+    tile('스매시',f2(s.smash),'','')+
+    tile('최고 높이',f0(s.peak),s.peak!=null?'m':'','')+
+    (DETAIL?tile('어택각',f1(s.aoa),'°',s.aoa==null?'':(s.aoa<0?'아래로 치는 중':'위로 치는 중'))+tile('클럽 경로',f1(s.path),'°',s.path==null?'':(s.path>0?'인-아웃':'아웃-인'))+tile('페이스',f1(s.face),'°',s.face==null?'':(s.face>0?'열림':'닫힘'))+tile('임팩트 로프트',f1(s.loft),'°','')+tile('임팩트 라이',f1(s.lie),'°',s.lie==null?'':(s.lie>0?'토우 들림':'토우 내려감'))+tile('타점',s.impH==null?'–':(s.impH>0?'토우 ':'힐 ')+f0(Math.abs(s.impH)),'mm',s.impV==null?'':(s.impV>0?'위 ':'아래 ')+f0(Math.abs(s.impV))+'mm'):'');
+}
+
+function renderTable(){
+  const st=S.options.map((_,i)=>statsOf(i));
+  const rows=[
+    ['샷 수','n',f0,null],
+    ['평균 총거리 (m)','total',f0,'max'],
+    ['평균 캐리 (m)','carry',f0,'max'],
+    ['볼스피드 (m/s)','ballSpeed',f1,'max'],
+    ['헤드스피드 (m/s)','clubSpeed',f1,null],
+    ['스매시','smash',f2,'max'],
+    ['발사각 (°)','launch',f1,null],
+    ['스핀 (rpm)','totalSpin',f0,null],
+    ['좌우 평균 벗어남 (m)','offAbs',f1,'min'],
+    ['좌우 흩어짐 (m)','offSD',f1,'min'],
+    ['거리 흩어짐 (m)','carrySD',f1,'min'],
+  ];
+  if(DETAIL) rows.push(['어택각 (°, +위·−아래)','aoa',f1,null],['클럽 경로 (°, +인아웃)','path',f1,null],['페이스 (°, +열림)','face',f1,null],
+    ['임팩트 로프트 (°)','loft',f1,null],['임팩트 라이 (°, +토우들림)','lie',f1,null],['타점 좌우 (mm, +토우)','impH',f0,null],['타점 상하 (mm, +위)','impV',f0,null]);
+  const keep=DETAIL?null:['n','total','carry','ballSpeed','offAbs','offSD','carrySD'];
+  const rowsUse=keep?rows.filter(r=>keep.includes(r[1])):rows;
+  let h='<thead><tr><th></th>'+S.options.map((o,i)=>`<th><span style="color:${COLORS[i%6]}">●</span> ${esc(o.name)}</th>`).join('')+'</tr></thead><tbody>';
+  for(const [label,k,fmt,best] of rowsUse){
+    const vs=st.map(x=>x.n>=2?x[k]:null);
+    let bi=-1;
+    if(best && vs.filter(v=>v!=null).length>=2){ const cand=vs.map((v,i)=>[v,i]).filter(x=>x[0]!=null); cand.sort((a,b)=>best==='max'?b[0]-a[0]:a[0]-b[0]); bi=cand[0][1] }
+    h+=`<tr><td>${label}</td>`+st.map((x,i)=>`<td class="${i===bi?'best':''}">${k==='n'?x.n:fmt(x.n?x[k]:null)}</td>`).join('')+'</tr>';
+  }
+  $('#cmp').innerHTML=h+'</tbody>';
+  return st;
+}
+
+function renderRec(st){
+  const ok=st.map((x,i)=>({...x,i})).filter(x=>x.n>=3);
+  const ul=$('#recWhy'); ul.innerHTML=''; $('#recSrc').textContent='';
+  if(ok.length===0){ $('#recName').textContent='클럽별로 3샷 이상 치면 추천이 나와요'; return null }
+  const dist=x=>x.total??x.carry;
+  // score: distance minus penalties for inconsistency (driver/wood) / consistency first (iron/wedge)
+  const iron=S.clubType==='iron'||S.clubType==='wedge';
+  ok.forEach(x=>{ const off=x.offSD??0, cs=x.carrySD??0, d=dist(x)??0;
+    x.score= iron ? (-cs*2 - off*1.2 - (x.offAbs??0)*0.5 + d*0.15) : (d - off*1.0 - cs*0.5 - (x.offAbs??0)*0.5) });
+  ok.sort((a,b)=>b.score-a.score);
+  const b=ok[0], ref=st[0]&&st[0].n>=3&&b.i!==0?{...st[0],i:0}:(ok[1]||null);
+  $('#recName').innerHTML=`<span style="color:${COLORS[b.i%6]}">●</span> ${esc(S.options[b.i].name)}`;
+  const why=[];
+  if(ref){
+    const nm=esc(S.options[ref.i].name);
+    const dd=(dist(b)??0)-(dist(ref)??0);
+    if(Math.abs(dd)>=1) why.push(`${nm}보다 평균 거리 ${dd>0?'+':''}${f0(dd)}m`);
+    if(b.offSD!=null&&ref.offSD!=null&&ref.offSD>0){ const r=b.offSD/ref.offSD; if(r<0.9) why.push(`좌우 흩어짐이 ${nm}의 ${Math.round(r*100)}% 수준으로 더 똑바로 가요`); else if(r>1.1) why.push(`좌우 흩어짐은 ${nm}보다 조금 커요 (${f1(b.offSD)}m vs ${f1(ref.offSD)}m)`) }
+    if(b.carrySD!=null&&ref.carrySD!=null&&b.carrySD<ref.carrySD*0.9) why.push(`거리 편차가 더 작아서 거리 맞추기가 쉬워요`);
+  }
+  if(S.clubType==='driver'){
+    const w=driverWindow(b.clubSpeed);
+    if(w&&b.launch!=null&&b.totalSpin!=null){
+      const lok=b.launch>=w.l[0]&&b.launch<=w.l[1], sok=b.totalSpin>=w.s[0]&&b.totalSpin<=w.s[1];
+      if(lok&&sok) why.push(`발사각 ${f1(b.launch)}°·스핀 ${f0(b.totalSpin)}rpm 모두 적정 범위예요 (헤드스피드 ${w.label} 기준)`);
+      else {
+        if(!lok) why.push(`발사각 ${f1(b.launch)}° → 적정 ${w.l[0]}~${w.l[1]}°보다 ${b.launch<w.l[0]?'낮아요. 로프트를 올려볼 만해요':'높아요. 로프트를 낮춰볼 만해요'}`);
+        if(!sok) why.push(`스핀 ${f0(b.totalSpin)}rpm → 적정 ${w.s[0]}~${w.s[1]}보다 ${b.totalSpin<w.s[0]?'적어요':'많아요. 저스핀 쪽 헤드·샤프트를 비교해볼 만해요'}`);
+      }
+      $('#recSrc').textContent='적정 범위 기준: TrackMan 드라이버 최적 발사각·스핀표 (MyGolfSpy 정리). 정타·약간 상향 타격 기준이에요.';
+    }
+  } else {
+    $('#recSrc').textContent= iron ? '아이언·웨지는 거리보다 일정함(거리·좌우 흩어짐)을 더 중요하게 봤어요.' : '';
+  }
+  if(!why.length) why.push('비교한 클럽 중 거리와 일정함을 합쳐 가장 좋아요');
+  // lie advice (iron/wedge): 한 방향으로 일정하면 장비(라이각), 양쪽으로 흩어지면 스윙
+  if(iron){ const a=shotsOf(b.i), L=vals(a,'lie');
+    if(L.length>=5){ const m=mean(L), d=sd(L);
+      if(Math.abs(m)>=1.5 && d<=1.5) why.push(`임팩트 라이가 매번 ${m>0?'토우가 들린':'토우가 내려간'} 쪽으로 일정해요 (평균 ${f1(Math.abs(m))}°). 라이각을 ${m>0?'플랫':'업라이트'} 쪽으로 약 ${f1(Math.min(3,Math.abs(m)/2))}° 조정해볼 만해요`);
+      else if(d>2) why.push(`임팩트 라이가 매번 달라요 (흩어짐 ${f1(d)}°). 라이각보다는 스윙 쪽 영향이 커 보여요`); } }
+  // 다음에 쳐볼 클럽 (재고 태그 기반)
+  const nx=nextTry(b);
+  if(nx) why.push(`다음에 비교해볼 클럽: <b>${esc(nx.item.name)}</b> (${nx.reason})`);
+  why.forEach(t=>{const li=document.createElement('li');li.innerHTML=t;ul.appendChild(li)});
+  return {b,why};
+}
+
+function renderPlot(){
+  const svg=$('#plot'); const W=500,H=420,pad=36;
+  const pts=S.shots.filter(s=>!s.ex&&(s.carry!=null)&&(s.offline!=null));
+  let maxD=Math.max(50,...pts.map(s=>s.carry)), minD=Math.min(...pts.map(s=>s.carry),maxD-40);
+  maxD=Math.ceil((maxD+5)/10)*10; minD=Math.max(0,Math.floor((minD-10)/10)*10);
+  let maxX=Math.max(15,...pts.map(s=>Math.abs(s.offline)))*1.15;
+  const X=v=>W/2+v/maxX*(W/2-pad), Y=v=>H-pad-(v-minD)/(maxD-minD)*(H-2*pad);
+  let g=`<rect x="0" y="0" width="${W}" height="${H}" fill="#0f1216" rx="12"/>`;
+  for(let d=minD;d<=maxD;d+=10){ g+=`<line x1="${pad}" x2="${W-pad}" y1="${Y(d)}" y2="${Y(d)}" stroke="#222730"/><text x="6" y="${Y(d)+4}" fill="#6b717c" font-size="11">${d}m</text>` }
+  g+=`<line x1="${W/2}" x2="${W/2}" y1="${pad-10}" y2="${H-pad}" stroke="#3a404a" stroke-dasharray="4 4"/>`;
+  g+=`<text x="${pad}" y="${H-10}" fill="#6b717c" font-size="12">← 왼쪽</text><text x="${W-pad-50}" y="${H-10}" fill="#6b717c" font-size="12">오른쪽 →</text>`;
+  S.options.forEach((o,i)=>{ const a=shotsOf(i).filter(s=>s.carry!=null&&s.offline!=null); if(a.length>=3){
+      const mx=mean(a.map(s=>s.offline)), my=mean(a.map(s=>s.carry)), sx=sd(a.map(s=>s.offline))||1, sy=sd(a.map(s=>s.carry))||1;
+      g+=`<ellipse cx="${X(mx)}" cy="${Y(my)}" rx="${Math.abs(X(mx+sx)-X(mx))}" ry="${Math.abs(Y(my+sy)-Y(my))}" fill="${COLORS[i%6]}22" stroke="${COLORS[i%6]}" stroke-width="2"/>`; } });
+  const last=S.shots[S.shots.length-1];
+  pts.forEach(s=>{ g+=`<circle cx="${X(s.offline)}" cy="${Y(s.carry)}" r="${s===last?9:6}" fill="${COLORS[s.opt%6]}" stroke="${s===last?'#fff':'#000'}" stroke-width="${s===last?3:1}"/>` });
+  svg.innerHTML=g;
+}
+
+function renderShotList(){
+  const box=$('#shotlist'); box.innerHTML='';
+  [...S.shots].reverse().forEach(s=>{
+    const d=document.createElement('div'); if(s.ex) d.className='ex';
+    d.innerHTML=`<span><span style="color:${COLORS[s.opt%6]}">●</span> ${esc(S.options[s.opt]?.name||'')} · 총 ${f0(s.total??s.carry)}m · ${lr(s.offline)} · 스핀 ${f0(s.totalSpin)}</span>`;
+    const b=document.createElement('button'); b.textContent=s.ex?'되살리기':'제외'; b.onclick=()=>{s.ex=!s.ex;save();renderAll()};
+    d.appendChild(b); box.appendChild(d);
+  });
+}
+
+let DETAIL=store.get('sf_detail',false);
+function renderBars(st){
+  const svg=$('#bars'); const items=st.map((x,i)=>({i,n:x.n,d:x.total??x.carry,off:x.offSD})).filter(x=>x.n>=1&&x.d!=null);
+  if(!items.length){svg.setAttribute('viewBox','0 0 640 10');svg.innerHTML='';return}
+  const maxD=Math.max(...items.map(x=>x.d)), minD=Math.min(...items.map(x=>x.d))-25;
+  const maxO=Math.max(5,...items.map(x=>x.off||0));
+  const rowH=46, H=items.length*rowH+30; svg.setAttribute('viewBox',`0 0 640 ${H}`);
+  let g=`<text x="150" y="16" fill="#8d929c" font-size="13">평균 거리 (길수록 멀리)</text><text x="450" y="16" fill="#8d929c" font-size="13">좌우 흩어짐 (짧을수록 똑바로)</text>`;
+  items.forEach((x,k)=>{ const y=28+k*rowH, c=COLORS[x.i%6];
+    const w=Math.max(8,(x.d-minD)/(maxD-minD||1)*230);
+    g+=`<text x="0" y="${y+22}" fill="#f2f2f0" font-size="15" font-weight="700">${esc(S.options[x.i].name).slice(0,12)}</text>`;
+    g+=`<rect x="150" y="${y+4}" width="${w}" height="26" rx="6" fill="${c}"/><text x="${150+w+6}" y="${y+23}" fill="#f2f2f0" font-size="15" font-weight="800">${f0(x.d)}m</text>`;
+    if(x.off!=null){ const ow=Math.max(6,x.off/maxO*110); g+=`<rect x="450" y="${y+4}" width="${ow}" height="26" rx="6" fill="${c}88"/><text x="${450+ow+6}" y="${y+23}" fill="#f2f2f0" font-size="15" font-weight="800">${f1(x.off)}m</text>` }
+    else g+=`<text x="450" y="${y+23}" fill="#8d929c" font-size="13">2샷 이상 필요</text>`;
+  });
+  svg.innerHTML=g;
+}
+function renderAll(){
+  $('#cust').value=S.cust; $('#clubType').value=S.clubType;
+  renderOptions(); renderLast(); const st=renderTable(); renderBars(st); renderRec(st); renderPlot(); renderShotList();
+  $('#modeBtn').textContent=DETAIL?'손님 화면':'자세히 보기';
+}
+
+function addShots(arr){ arr.forEach(s=>{s.opt=S.active;S.shots.push(s)}); save(); renderAll() }
+
+// ---------------- file connection ----------------
+let handle=null, lastText=null, pollT=null;
+const idb=(()=>{let db;const open=()=>new Promise((r,j)=>{if(db)return r(db);const q=indexedDB.open('sf',1);q.onupgradeneeded=()=>q.result.createObjectStore('kv');q.onsuccess=()=>{db=q.result;r(db)};q.onerror=()=>j(q.error)});
+  return {get:async k=>{try{const d=await open();return await new Promise(r=>{const t=d.transaction('kv').objectStore('kv').get(k);t.onsuccess=()=>r(t.result);t.onerror=()=>r(null)})}catch(e){return null}},
+          set:async(k,v)=>{try{const d=await open();d.transaction('kv','readwrite').objectStore('kv').put(v,k)}catch(e){}}}})();
+function setStatus(on,msg){ const s=$('#status'); s.classList.toggle('on',on); s.textContent=msg }
+async function startPolling(h){
+  handle=h; clearInterval(pollT);
+  try{ const f=await h.getFile(); lastText=await f.text(); }catch(e){}
+  setStatus(true,'GC쿼드 연결됨 · 샷을 기다리는 중');
+  pollT=setInterval(async()=>{
+    try{
+      const f=await handle.getFile(); const t=await f.text();
+      if(t && t!==lastText){ lastText=t; const shots=rowsToShots(parseCSV(t)); if(shots.length){ addShots([shots[shots.length-1]]); setStatus(true,'GC쿼드 연결됨 · 방금 샷 받음') } }
+    }catch(e){ setStatus(false,'연결이 끊겼어요 · GC쿼드 연결을 다시 눌러주세요'); clearInterval(pollT) }
+  },700);
+}
+async function pickFile(){
+  $('#pickErr').textContent='';
+  if(!window.showOpenFilePicker){ $('#pickErr').textContent='이 브라우저는 파일 연결을 지원하지 않아요. 컴퓨터용 크롬(또는 엣지)으로 열어주세요.'; return }
+  try{
+    const [h]=await showOpenFilePicker({startIn:'documents',types:[{description:'샷 파일',accept:{'text/csv':['.csv']}}]});
+    await idb.set('handle',h); await startPolling(h); $('#connectModal').classList.add('hidden');
+  }catch(e){ if(e.name!=='AbortError') $('#pickErr').textContent='파일을 열 수 없어요: '+e.message }
+}
+async function reconnect(){
+  const h=await idb.get('handle'); if(!h) return false;
+  try{
+    let p=await h.queryPermission({mode:'read'});
+    if(p!=='granted') p=await h.requestPermission({mode:'read'});
+    if(p==='granted'){ await startPolling(h); return true }
+  }catch(e){}
+  return false;
+}
+
+// helper .bat (copies FSX shot files to Documents\SimonFitting every second)
+const BAT=['@echo off','chcp 65001 >nul','title 시몬골프 연결도우미 - 이 창을 닫지 마세요',
+'set "SRC=C:\\Program Files (x86)\\Foresight Sports Experience\\System"',
+'if not exist "%SRC%" set "SRC=C:\\Program Files\\Foresight Sports Experience\\System"',
+'set "DST=%USERPROFILE%\\Documents\\SimonFitting"',
+'if not exist "%DST%" mkdir "%DST%"',
+'echo.','echo  시몬골프 연결도우미가 실행 중이에요.','echo  피팅하는 동안 이 창을 켜두세요. (최소화는 괜찮아요)','echo.',
+'if not exist "%SRC%" echo  [확인 필요] FSX 폴더를 못 찾았어요: %SRC%',
+':loop',
+'if exist "%SRC%\\LastShot.csv" copy /y "%SRC%\\LastShot.csv" "%DST%\\LastShot.csv" >nul',
+'if exist "%SRC%\\Shots.csv" copy /y "%SRC%\\Shots.csv" "%DST%\\Shots.csv" >nul',
+'timeout /t 1 /nobreak >nul','goto loop',''].join('\r\n');
+$('#batLink').href=URL.createObjectURL(new Blob(['\ufeff'.slice(1)+BAT],{type:'application/octet-stream'}));
+
+// drag & drop Shots.csv
+document.addEventListener('dragover',e=>e.preventDefault());
+document.addEventListener('drop',async e=>{ e.preventDefault(); const f=e.dataTransfer.files[0]; if(!f) return;
+  const shots=rowsToShots(parseCSV(await f.text())); addShots(shots); $('#connectModal').classList.add('hidden'); setStatus(!!handle, handle?$('#status').textContent:`파일에서 ${shots.length}샷 불러옴`) });
+
+// demo shots
+function demoShot(){
+  const o=S.active, base=[ {c:205,s:2900,l:12.5,off:9}, {c:214,s:2550,l:13.8,off:5}, {c:210,s:2300,l:12,off:7}, {c:208,s:2700,l:14,off:6} ][o%4];
+  const r=()=> (Math.random()+Math.random()+Math.random()-1.5);
+  const carry=base.c+r()*8, cs=42+r()*0.8;
+  return {t:Date.now(),clubSpeed:cs,ballSpeed:cs*1.46+r()*0.5,smash:1.46+r()*0.02,launch:base.l+r()*1.2,totalSpin:base.s+r()*250,
+    carry, total:carry+18+r()*5, offline:r()*base.off*1.3, peak:28+r()*3};
+}
+let demoT=null;
+
+// ---------------- UI wiring ----------------
+$('#cust').oninput=e=>{S.cust=e.target.value;save()};
+$('#clubType').onchange=e=>{S.clubType=e.target.value;save();renderAll()};
+$('#connectBtn').onclick=async()=>{ if(!(await reconnect())) $('#connectModal').classList.remove('hidden') };
+$('#pickBtn').onclick=pickFile;
+$('#closeConnect').onclick=()=>$('#connectModal').classList.add('hidden');
+$('#demoBtn').onclick=()=>{ $('#connectModal').classList.add('hidden'); clearInterval(demoT); setStatus(true,'연습 모드 · 3초마다 가짜 샷'); demoT=setInterval(()=>addShots([demoShot()]),3000); addShots([demoShot()]) };
+$('#newBtn').onclick=()=>{ const m=document.createElement('div'); m.className='modal'; m.innerHTML=`<div class="box"><h3>새 손님으로 시작할까요?</h3><p class="help">지금 기록은 지워져요. 필요하면 먼저 "리포트 저장"을 눌러주세요.</p><div class="row"><span class="sp"></span><button id="nNo">취소</button><button class="primary" id="nOk">새로 시작</button></div></div>`; document.body.appendChild(m);
+  m.querySelector('#nNo').onclick=()=>m.remove(); m.querySelector('#nOk').onclick=()=>{ clearInterval(demoT); S={cust:'',clubType:S.clubType,options:[{name:'현재 클럽'}],active:0,shots:[]}; save(); renderAll(); m.remove() } };
+$('#invBtn').onclick=()=>{ $('#invModal').classList.remove('hidden'); renderInv() };
+$('#closeInv').onclick=()=>$('#invModal').classList.add('hidden');
+$('#invAdd').onclick=()=>{ const n=$('#invName').value.trim(); if(!n) return; INV.push({type:$('#invType').value,name:n,l:+$('#invL').value||0,s:+$('#invS').value||0,w:num($('#invW').value)}); store.set('sf_inv',INV); $('#invName').value=''; renderInv() };
+function renderInv(){ const tn={driver:'드라이버',wood:'우드·유틸',iron:'아이언',wedge:'웨지'}; $('#invList').innerHTML=INV.map((x,i)=>`<div class="row" style="justify-content:space-between;border-bottom:1px solid var(--line);padding:6px 0"><span><span class="help">${tn[x.type]}</span> &nbsp; ${esc(x.name)} <span class="help">${x.l?['','탄도 낮음','탄도 중간','탄도 높음'][x.l]:''} ${x.s?['','스핀 적음','스핀 중간','스핀 많음'][x.s]:''} ${x.w?x.w+'g':''}</span></span><button data-d="${i}">삭제</button></div>`).join('')||'<p class="help">아직 등록된 클럽이 없어요.</p>';
+  document.querySelectorAll('[data-d]').forEach(b=>b.onclick=()=>{INV.splice(+b.dataset.d,1);store.set('sf_inv',INV);renderInv()}) }
+$('#modeBtn').onclick=()=>{DETAIL=!DETAIL;store.set('sf_detail',DETAIL);renderAll()};
+$('#moreBtn').onclick=()=>{ $('#uDist').value=SET.uDist; $('#uSpd').value=SET.uSpd; $('#colmap').textContent=colInfo; $('#moreModal').classList.remove('hidden') };
+$('#closeMore').onclick=()=>$('#moreModal').classList.add('hidden');
+$('#uDist').onchange=e=>{SET.uDist=e.target.value;store.set('sf_set',SET)};
+$('#uSpd').onchange=e=>{SET.uSpd=e.target.value;store.set('sf_set',SET)};
+$('#clearAll').onclick=()=>{ S.shots=[]; save(); renderAll(); $('#moreModal').classList.add('hidden') };
+
+// report
+$('#printBtn').onclick=()=>{
+  const st=S.options.map((_,i)=>statsOf(i)); const rec=renderRec(st);
+  const d=new Date(); const ds=`${d.getFullYear()}.${d.getMonth()+1}.${d.getDate()}`;
+  const tn={driver:'드라이버',wood:'우드·유틸',iron:'아이언',wedge:'웨지'}[S.clubType];
+  $('#report').innerHTML=`<h1>시몬골프 피팅 리포트</h1><p>${esc(S.cust||'손님')} 님 · ${tn} · ${ds}</p>
+   ${rec?`<div class="rbox"><b>추천: ${esc(S.options[rec.b.i].name)}</b><ul>${rec.why.map(w=>`<li>${w}</li>`).join('')}</ul></div>`:''}
+   <table>${$('#cmp').innerHTML}</table>
+   <div style="margin-top:10px">${$('#plot').outerHTML.replace('style="width:100%;height:auto"','style="width:120mm;height:auto"')}</div>
+   <p style="font-size:9pt;color:#555">${$('#recSrc').textContent}<br>시몬골프 · 청주 봉명동 · 미스샷은 평균에서 제외했어요.</p>`;
+  window.print();
+};
+
+// test hook
+window.__sf={parseCSV,rowsToShots,addShots,get S(){return S}};
+
+renderAll();
+reconnect();
+})();
+</script>
+</body>
+</html>
