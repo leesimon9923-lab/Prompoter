@@ -9,11 +9,22 @@ android {
         applicationId = "com.simongolf.prompter"
         minSdk = 26
         targetSdk = 34
-        versionCode = 2
-        versionName = "1.1"
+        versionCode = 3
+        versionName = "1.2"
+    }
+    signingConfigs {
+        create("fixed") {
+            storeFile = file("simongolf.keystore")
+            storePassword = "simongolf"
+            keyAlias = "simongolf"
+            keyPassword = "simongolf"
+        }
     }
     buildTypes {
-        getByName("debug") { isMinifyEnabled = false }
+        getByName("debug") {
+            isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("fixed")
+        }
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
