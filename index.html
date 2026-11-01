@@ -53,6 +53,8 @@
   #rec-time { pointer-events:none; background:rgba(0,0,0,.5); border-radius:20px; padding:6px 12px; font-weight:800; font-size:16px; }
   #rec-time.on::before { content:''; display:inline-block; width:10px; height:10px; border-radius:50%; background:var(--red); margin-right:7px; vertical-align:1px; }
 
+  #zoomRow { position:absolute; left:16px; right:16px; bottom:calc(118px + env(safe-area-inset-bottom)); display:flex; gap:10px; align-items:center; font-size:12px; color:rgba(255,255,255,.75); z-index:4; }
+  #zoomRow input { flex:1; accent-color:var(--accent); }
   #controls { position:absolute; left:0; right:0; bottom:0; padding:12px 14px calc(16px + env(safe-area-inset-bottom));
     display:flex; align-items:center; justify-content:space-between; background:linear-gradient(transparent, rgba(0,0,0,.6)); }
   .side { display:flex; gap:8px; align-items:center; }
@@ -75,7 +77,7 @@
 
 <!-- 1. setup -->
 <div id="setup" class="screen">
-  <h1>시몬골프 프롬프터 <span style="font-size:12px;color:#8a8f99;font-weight:600">v4</span></h1>
+  <h1>시몬골프 프롬프터 <span style="font-size:12px;color:#8a8f99;font-weight:600">v5</span></h1>
   <p class="help">대본을 붙여넣고 "카메라 켜기"를 누르세요. 녹화 버튼을 누르면 3초 뒤 녹화와 대본이 같이 시작돼요.</p>
   <textarea id="script" placeholder="여기에 대본을 붙여넣으세요"></textarea>
   <div class="row"><label>흐르는 속도</label><input type="range" id="speed" min="1" max="20" step="1"><span class="val" id="speedVal"></span></div>
@@ -97,6 +99,7 @@
     <div id="dims"></div></div>
   <div id="topbar"><span></span><span id="rec-time">00:00</span></div>
   <div id="count" class="hidden">3</div>
+  <div id="zoomRow"><span>전체</span><input type="range" id="zoom" min="0" max="100" step="1"><span>꽉 채움</span></div>
   <div id="controls">
     <div class="side"><button id="backBtn">대본</button><button id="pauseBtn">멈춤</button></div>
     <button id="recBtn" aria-label="녹화"><span></span></button>
@@ -126,7 +129,7 @@
     speed:+store.get('sp_speed',6), size:+store.get('sp_size',32), ph:+store.get('sp_ph',36),
     dir:store.get('sp_dir','1'), facing:store.get('sp_cam','user'),
     stream:null, rec:null, chunks:[], blob:null, mime:'', ext:'mp4',
-    y:0, playing:false, last:0, raf:0, maxY:0, t0:0, timerIv:0, wake:null, busy:false
+    zoom:+store.get('sp_zoom',0), y:0, playing:false, last:0, raf:0, maxY:0, t0:0, timerIv:0, wake:null, busy:false
   };
 
   // ---------- setup ----------
@@ -206,15 +209,29 @@
   // draw camera into a fixed 1080x1920 (9:16) canvas: what you see is exactly what is recorded
   function startDraw(){
     const v = $('#video'), cv = $('#canvas'), cx = cv.getContext('2d');
+    const small = document.createElement('canvas'); small.width = 54; small.height = 96; const sx2 = small.getContext('2d');
     cancelAnimationFrame(st.drawRaf);
     const loop = () => {
       const vw = v.videoWidth, vh = v.videoHeight;
       if (vw && vh){
-        const W = cv.width, H = cv.height, tr = W/H, sr = vw/vh;
-        let sw, sh, sx, sy;
-        if (sr > tr){ sh = vh; sw = vh*tr; sx = (vw-sw)/2; sy = 0; } else { sw = vw; sh = vw/tr; sx = 0; sy = (vh-sh)/2; }
-        if (st.facing === 'user'){ cx.setTransform(-1,0,0,1,W,0); } else { cx.setTransform(1,0,0,1,0,0); }
-        cx.drawImage(v, sx, sy, sw, sh, 0, 0, W, H);
+        const W = cv.width, H = cv.height, mirror = st.facing === 'user';
+        // crop window: from full frame (zoom 0) to a crop that fills 9:16 (zoom 100)
+        const z = st.zoom/100;
+        const fillW = Math.min(vw, vh*W/H), fillH = Math.min(vh, vw*H/W);
+        const cw = vw + (fillW - vw)*z, ch = vh + (fillH - vh)*z;
+        const sx = (vw-cw)/2, sy = (vh-ch)/2;
+        // fit crop inside canvas
+        const scale = Math.min(W/cw, H/ch), dw = cw*scale, dh = ch*scale, dx = (W-dw)/2, dy = (H-dh)/2;
+        if (mirror) cx.setTransform(-1,0,0,1,W,0); else cx.setTransform(1,0,0,1,0,0);
+        if (dw < W-1 || dh < H-1){
+          // blurred fill behind (cheap: draw tiny then upscale)
+          const bs = Math.max(54/vw, 96/vh), bw = 54/bs, bh = 96/bs;
+          sx2.drawImage(v, (vw-bw)/2, (vh-bh)/2, bw, bh, 0, 0, 54, 96);
+          cx.imageSmoothingEnabled = true; cx.globalAlpha = 1;
+          cx.drawImage(small, 0, 0, 54, 96, 0, 0, W, H);
+          cx.fillStyle = 'rgba(0,0,0,.35)'; cx.fillRect(0,0,W,H);
+        }
+        cx.drawImage(v, sx, sy, cw, ch, dx, dy, dw, dh);
         cx.setTransform(1,0,0,1,0,0);
         $('#dims').textContent = vw + '×' + vh;
       }
@@ -222,6 +239,9 @@
     };
     st.drawRaf = requestAnimationFrame(loop);
   }
+  const zEl = document.getElementById('zoom');
+  zEl.value = st.zoom;
+  zEl.addEventListener('input', () => { st.zoom = +zEl.value; store.set('sp_zoom', st.zoom); });
   async function keepAwake(){ try { if ('wakeLock' in navigator) st.wake = await navigator.wakeLock.request('screen'); } catch(e){} }
 
   const textEl = $('#text'), pr = $('#prompter');
