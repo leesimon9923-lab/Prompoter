@@ -399,7 +399,7 @@
 
 <script>
 (()=>{
-const APP_VER='2.1 · 2026-11-02';
+const APP_VER='2.2 · 2026-11-02';
 const $=s=>document.querySelector(s);
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const store={get(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}},
@@ -831,7 +831,7 @@ function renderLast(){
   $('#bigDist').innerHTML=`<div class="v">${f0(d)}<small>m</small></div><div class="sub">${S.clubType==='driver'?`${distName()}${isNum(s.carry)&&isNum(s.total)?` · 공중 ${f0(s.carry)}m + 굴러서 ${f0(s.total-s.carry)}m`:''}`:`캐리(공중 거리)${isNum(s.total)?` · 굴러서 총 ${f0(s.total)}m`:''}`}</div>`;
   let lc='',sc='',ln='',sn='';
   if(S.clubType==='driver'){
-    const w=driverWindow(s.clubSpeed);
+    const cs=vals(S.shots.filter(x=>x.opt===s.opt&&!isOut(x)),'clubSpeed'); const w=driverWindow(cs.length?median(cs):s.clubSpeed);
     if(w&&isNum(s.launch)){ const ok=s.launch>=w.l[0]&&s.launch<=w.l[1]; lc=ok?'good':'warn'; ln=ok?'딱 좋아요':(s.launch<w.l[0]?'조금 낮아요':'조금 높아요') }
     if(w&&isNum(s.totalSpin)){ const ok=s.totalSpin>=w.s[0]&&s.totalSpin<=w.s[1]; sc=ok?'good':'warn'; sn=ok?'딱 좋아요':(s.totalSpin<w.s[0]?'적어요':'많아요') }
   }
@@ -848,7 +848,7 @@ function renderLast(){
 }
 
 function renderTable(st){
-  const rows=[['친 공 (미스 제외)','n',v=>v,null],['평균 총거리 (m)','total',f0,'max'],['평균 캐리 (m)','carry',f0,'max'],['거리 흩어짐 ± (m)','distSD',f1,'min'],
+  const rows=[['친 공 (미스 제외)','n',v=>v,null],['미스 (평균에서 뺌)','misses',v=>v,null],['평균 총거리 (m)','total',f0,'max'],['평균 캐리 (m)','carry',f0,'max'],['거리 흩어짐 ± (m)','distSD',f1,'min'],
     ['좌우 벗어남 평균 (m)','offAbs',f1,'min'],['좌우 흩어짐 ± (m)','offSD',f1,'min'],['볼스피드 (m/s)','ballSpeed',f1,'max'],['헤드스피드 (m/s)','clubSpeed',f1,null],
     ['스매시','smash',f2,'max'],['발사각 (°)','launch',f1,null],['스핀 (rpm)','totalSpin',f0,null],['최고 높이 (m)','peak',f0,null],['착지각 (°)','descent',f1,null],
     ['어택각 (°, +위)','aoa',f1,null],['클럽 경로 (°, +인아웃)','path',f1,null],['페이스 (°, +열림)','face',f1,null],['임팩트 로프트 (°)','loft',f1,null],
@@ -1042,11 +1042,12 @@ function openPlan(){
 // 파일 읽기는 Worker에서 (창이 가려져도 크롬이 느리게 만들지 않도록)
 const POLLER=function(ctx,readCSVText){
   let dir=null,T=null,busy=false,firstDone=false; const prev={},emitted={},atStart=new Set();
+  async function findH(n){ try{ return await dir.getFileHandle(n) }catch(e){ if(e.name!=='NotFoundError') throw e; const l=n.toLowerCase(); for await (const [k,h] of dir.entries()){ if(k.toLowerCase()===l&&h.kind==='file') return h } throw e } }
   async function tick(){
     if(!dir||busy) return; busy=true; const st={kind:'status',files:{}};
     try{
       for(const name of ['Shots.csv','LastShot.csv']){
-        try{ const fh=await dir.getFileHandle(name); const f=await fh.getFile(); st.files[name]=f.lastModified;
+        try{ const fh=await findH(name); const f=await fh.getFile(); st.files[name]=f.lastModified;
           if(!f.size) continue; if(!firstDone) atStart.add(name);
           const t=await readCSVText(f);
           // [FIX C1] initial: 연결한 순간 이미 있던 파일인지 (없던 파일이 새로 생긴 거면 그 안의 샷은 전부 새 샷)
@@ -1054,8 +1055,8 @@ const POLLER=function(ctx,readCSVText){
           prev[name]=t;
         }catch(e){ if(e.name==='NotAllowedError'||e.name==='SecurityError') st.denied=true; else if(e.name!=='NotFoundError') st.err=e.name }
       }
-      try{ const f=await (await dir.getFileHandle('alive.txt')).getFile(); st.alive=f.lastModified }catch(e){ if(e.name==='NotAllowedError') st.denied=true }
-      try{ await dir.getFileHandle('nofsx.txt'); st.nofsx=true }catch(e){}
+      try{ const f=await (await findH('alive.txt')).getFile(); st.alive=f.lastModified }catch(e){ if(e.name==='NotAllowedError') st.denied=true }
+      try{ await findH('nofsx.txt'); st.nofsx=true }catch(e){}
     }finally{ busy=false; firstDone=true; st.now=Date.now(); ctx.postMessage(st) }
   }
   ctx.onmessage=e=>{ const d=e.data;
@@ -1159,20 +1160,8 @@ async function autoReconnect(ask){
 
 // 연결 도우미 (.bat, 영어만 사용: 한글 깨짐 방지)
 const CANDS=['%LOCALAPPDATA%\\VirtualStore\\Program Files (x86)\\Foresight Sports Experience\\System','C:\\Program Files (x86)\\Foresight Sports Experience\\System','C:\\Program Files\\Foresight Sports Experience\\System','D:\\Program Files (x86)\\Foresight Sports Experience\\System','D:\\Program Files\\Foresight Sports Experience\\System','D:\\Foresight Sports Experience\\System'];
-const BAT=['@echo off','title SimonGolf GCQuad helper - keep this window open (minimize OK)','set "DST=C:\\SimonFitting"','if not exist "%DST%" mkdir "%DST%"',
-'set "STARTUP=%APPDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\SimonGolf_helper.bat"',
-'if /i "%~f0"=="%STARTUP%" goto run','if exist "%STARTUP%" goto run','if exist "%DST%\\noauto.txt" goto run',
-'echo.','echo  Start this helper automatically when the PC turns on?','choice /c YN /t 20 /d N /m "  Y = yes (recommended), N = no"',
-'if errorlevel 2 (echo no>"%DST%\\noauto.txt") else (copy /y "%~f0" "%STARTUP%" >nul & echo  OK. It will start automatically from now on.)',
-':run','cls','echo.','echo  ==============================================','echo   SimonGolf GCQuad helper is RUNNING.','echo   Keep this window open. Minimize is OK.','echo  ==============================================','echo.',
-':loop','set "SRC="',
-'for %%P in ('+CANDS.map(p=>'"'+p+'"').join(' ')+') do if not defined SRC if exist "%%~P\\LastShot.csv" set "SRC=%%~P"',
-'if not defined SRC for %%P in ('+CANDS.map(p=>'"'+p+'"').join(' ')+') do if not defined SRC if exist "%%~P\\Shots.csv" set "SRC=%%~P"',
-'if not defined SRC for %%P in ('+CANDS.map(p=>'"'+p+'"').join(' ')+') do if not defined SRC if exist "%%~P" set "SRC=%%~P"',
-'if defined SRC (robocopy "%SRC%" "%DST%" LastShot.csv Shots.csv /R:0 /W:0 /NJH /NJS /NFL /NDL /NP >nul 2>nul) else (echo FSX folder not found>"%DST%\\nofsx.txt")',
-'if defined SRC if exist "%DST%\\nofsx.txt" del "%DST%\\nofsx.txt" >nul 2>nul',
-'echo %time%>"%DST%\\alive.txt"','timeout /t 1 /nobreak >nul','goto loop',''].join('\r\n');
-const PSLINE="powershell -w min -c \"md C:\\SimonFitting -ea 0;while(1){robocopy 'C:\\Program Files (x86)\\Foresight Sports Experience\\System' C:\\SimonFitting *Shot*.csv /R:0 /W:0 >$null;date >C:\\SimonFitting\\alive.txt;sleep 1}\"";
+const BAT="@echo off\r\nsetlocal\r\ntitle SimonGolf GCQuad helper - keep this window open (minimize OK)\r\nset \"DST=C:\\SimonFitting\"\r\nif not exist \"%DST%\" mkdir \"%DST%\"\r\nif \"%~1\"==\"run\" goto run\r\nset \"STARTUP=%APPDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\SimonGolf_helper.bat\"\r\nif /i \"%~f0\"==\"%STARTUP%\" goto min\r\nif exist \"%STARTUP%\" goto update\r\nif exist \"%DST%\\noauto.txt\" goto min\r\necho.\r\necho  [Q] Start this helper automatically when the PC turns on?\r\necho      Press Y (recommended) or N.\r\nchoice /c YN /n\r\nif errorlevel 2 goto noauto\r\ntype \"%~f0\" > \"%STARTUP%\"\r\necho  OK. Auto start is ON.\r\ngoto min\r\n:noauto\r\n> \"%DST%\\noauto.txt\" echo no\r\ngoto min\r\n:update\r\nrem already installed: keep the startup copy up to date (type = plain copy without download mark [guess])\r\ntype \"%~f0\" > \"%STARTUP%\"\r\n:min\r\nstart \"SimonGolf helper\" /min cmd /c \"\"%~f0\" run\"\r\nexit /b\r\n\r\n:run\r\ncls\r\necho.\r\necho  ==============================================\r\necho   SimonGolf GCQuad helper is RUNNING.\r\necho   Keep this window open. Minimize is OK.\r\necho  ==============================================\r\necho.\r\nset \"EXTRA=\"\r\nif exist \"%DST%\\fsxpath.txt\" set /p EXTRA=<\"%DST%\\fsxpath.txt\"\r\n:loop\r\nset \"FOUND=\"\r\nif defined EXTRA if exist \"%EXTRA%\\\" (\r\n  set \"FOUND=1\"\r\n  robocopy \"%EXTRA%\" \"%DST%\" LastShot.csv Shots.csv /XO /R:0 /W:0 /NJH /NJS /NFL /NDL /NP >nul 2>nul\r\n)\r\nfor %%P in (\"%LOCALAPPDATA%\\VirtualStore\\Program Files (x86)\\Foresight Sports Experience\\System\" \"C:\\Program Files (x86)\\Foresight Sports Experience\\System\" \"C:\\Program Files\\Foresight Sports Experience\\System\" \"D:\\Program Files (x86)\\Foresight Sports Experience\\System\" \"D:\\Program Files\\Foresight Sports Experience\\System\" \"D:\\Foresight Sports Experience\\System\") do if exist \"%%~P\\\" (\r\n  set \"FOUND=1\"\r\n  robocopy \"%%~P\" \"%DST%\" LastShot.csv Shots.csv /XO /R:0 /W:0 /NJH /NJS /NFL /NDL /NP >nul 2>nul\r\n)\r\nif defined FOUND goto found\r\ncall :ask\r\ngoto beat\r\n:found\r\nif exist \"%DST%\\nofsx.txt\" del \"%DST%\\nofsx.txt\" >nul 2>nul\r\n:beat\r\n> \"%DST%\\alive.txt\" echo %time%\r\ntimeout /t 1 /nobreak >nul\r\ngoto loop\r\n\r\n:ask\r\n> \"%DST%\\nofsx.txt\" echo FSX folder not found\r\necho.\r\necho  [!] FSX folder not found.\r\necho      Drag the FSX \"System\" folder into this window, then press Enter.\r\nset \"EXTRA=\"\r\nset /p \"EXTRA=  > \"\r\nif not defined EXTRA exit /b\r\nset \"EXTRA=%EXTRA:\"=%\"\r\n> \"%DST%\\fsxpath.txt\" echo %EXTRA%\r\nexit /b\r\n";
+const PSLINE="powershell -w min -c \"$d='C:\\SimonFitting';md $d -ea 0;$s=(gi 'C:\\P*\\Foresight*\\System' -ea 0)[0];while(1){if($s){robocopy $s.FullName $d *Shot*.csv /R:0 /W:0}else{sc $d\\nofsx.txt 1};date >$d\\alive.txt;sleep 1}>$null\"";
 $('#psLine').value=PSLINE;
 $('#psCopy').onclick=async()=>{ try{ await navigator.clipboard.writeText(PSLINE); toast('복사됐어요. 윈도우키+R → Ctrl+V → Enter') }catch(e){ $('#psLine').select(); toast('Ctrl+C로 복사해주세요') } };
 $('#batBtn').onclick=()=>{ const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([BAT],{type:'application/octet-stream'})); a.download='SimonGolf_helper.bat'; document.body.appendChild(a); a.click(); setTimeout(()=>a.remove(),500) };
@@ -1352,7 +1341,7 @@ $('#clubType').onchange=e=>{ const v=e.target.value;
   confirmBox(`${TN[v]} 피팅을 새로 시작할까요?`,`지금 ${TN[S.clubType]} 기록(${S.shots.length}샷)은 '지난 기록'에 보관돼요. 손님 이름은 그대로예요.`,async()=>{ await archiveCurrent(); stopDemo(); S=newSession(v,S.cust); save(); renderAll() },'새로 시작') };
 $('#sessBtn').onclick=openPlan;
 $('#connectBtn').onclick=async()=>{ if(!(await autoReconnect(true))||!checks().aliveOk) $('#connectModal').classList.remove('hidden'); updateStatus() };
-$('#status').onclick=()=>{ $('#connectModal').classList.remove('hidden'); updateStatus() };
+$('#status').onclick=async()=>{ if(demoT){ stopDemo(); S.shots=S.shots.filter(x=>!x.demo); save(); renderAll(); toast('연습 모드를 껐어요'); return } await autoReconnect(true); $('#connectModal').classList.remove('hidden'); updateStatus() };
 $('#pickBtn').onclick=pickDir;
 $('#closeConnect').onclick=()=>$('#connectModal').classList.add('hidden');
 $('#demoBtn').onclick=()=>{ $('#connectModal').classList.add('hidden'); clearInterval(demoT); demoT=setInterval(()=>addShots([demoShot()]),2500); addShots([demoShot()]); updateStatus() };
