@@ -177,6 +177,8 @@
   body:not(.fitter) header{position:fixed;left:0;right:0;top:0;z-index:20;opacity:1;background:#0f1115f5;
     transform:translateY(calc(-100% + 4px));transition:transform .18s ease;box-shadow:0 8px 30px #0008}
   body:not(.fitter) header:hover,body:not(.fitter) header:focus-within{transform:none;opacity:1}
+  body.setup header{position:sticky!important;transform:none!important;opacity:1!important}
+  body.setup main{height:auto!important;overflow:visible!important}
 
   /* 3) 간격을 화면 크기에 비례 */
   body:not(.fitter) main{gap:calc(var(--u)*1.1 + 4px);padding:calc(var(--u)*1.1 + 4px);grid-template-columns:minmax(0,1fr) minmax(0,1.15fr)}
@@ -276,7 +278,7 @@
       <div id="empty">
         <h3>이렇게 시작하세요</h3>
         <ol>
-          <li><b>세션 만들기</b>: 칠 클럽 순서를 정해요 (예: 기존 채 5번 → 벤투스 5번)</li>
+          <li>맨 위 노란 <b>세션 만들기</b> 버튼: 칠 클럽 순서를 정해요 (예: 기존 채 5번 → 벤투스 5번)</li>
           <li><b>GC쿼드 연결</b>: 처음 한 번만 설정하면 돼요</li>
           <li>공을 치면 여기에 바로 나오고, 정한 횟수를 다 치면 다음 클럽을 알려줘요</li>
         </ol>
@@ -399,7 +401,7 @@
 
 <script>
 (()=>{
-const APP_VER='2.2 · 2026-11-02';
+const APP_VER='2.3 · 2026-11-02';
 const $=s=>document.querySelector(s);
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const store={get(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}},
@@ -969,6 +971,7 @@ let lastR=null;
 function renderAll(){
   $('#cust').value=S.cust; $('#clubType').value=S.clubType;
   document.body.classList.toggle('fitter',DETAIL);
+  document.body.classList.toggle('setup',!S.shots.length);
   $('#modeBtn').textContent=DETAIL?'손님 화면':'상세 화면';
   computeAuto();
   const st=S.options.map((_,i)=>statsOf(i));
