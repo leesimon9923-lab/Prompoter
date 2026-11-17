@@ -1,6 +1,7 @@
 package com.simongolf.prompter
 
 import android.app.Activity
+import android.app.AlertDialog
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
@@ -65,6 +66,23 @@ class MainActivity : Activity() {
                 override fun afterTextChanged(s: Editable?) { prefs.edit().putString("script", s.toString()).apply() }
             })
         }
+        // 대본 전체 지우기 (실수로 누를 수 있으니 한 번 물어본다)
+        val clearRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.END; setPadding(0, 0, 0, dp(8f)) }
+        clearRow.addView(Button(this).apply {
+            text = "대본 전체 지우기"; textSize = 14f; isAllCaps = false; setTextColor(Color.WHITE)
+            minHeight = 0; minimumHeight = 0
+            background = roundBg(PANEL, dp(10f).toFloat(), 0xFF3A3E46.toInt()); setPadding(dp(14f), 0, dp(14f), 0)
+            setOnClickListener {
+                if (script.text.isNullOrEmpty()) return@setOnClickListener
+                AlertDialog.Builder(this@MainActivity)
+                    .setMessage("대본을 전부 지울까요?")
+                    .setPositiveButton("지우기") { _, _ -> script.setText(""); script.requestFocus() }
+                    .setNegativeButton("취소", null)
+                    .show()
+            }
+        }, LinearLayout.LayoutParams(WRAP_CONTENT, dp(40f)))
+        root.addView(clearRow)
+
         root.addView(script, LinearLayout.LayoutParams(MATCH_PARENT, 0, 1f))
 
         fun slider(label: String, key: String, min: Int, max: Int, def: Int, suffix: String = "") {
