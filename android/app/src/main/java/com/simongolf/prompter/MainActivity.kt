@@ -84,16 +84,39 @@ class MainActivity : Activity() {
             row.addView(value, LinearLayout.LayoutParams(dp(48f), WRAP_CONTENT))
             root.addView(row)
         }
+        // 촬영 방향: 세로(쇼츠·릴스) / 가로(유튜브 롱폼). 글자 크기·창 높이는 방향마다 따로 기억
+        val land = prefs.getBoolean("land", false)
+        val modeRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, dp(12f), 0, 0) }
+        modeRow.addView(TextView(this).apply { text = "촬영 방향"; setTextColor(0xFFCFD2D8.toInt()); textSize = 15f; gravity = Gravity.CENTER_VERTICAL },
+            LinearLayout.LayoutParams(dp(92f), dp(44f)))
+        fun modeBtn(label: String, on: Boolean, value: Boolean) = Button(this).apply {
+            text = label; textSize = 15f; isAllCaps = false
+            setTextColor(if (on) 0xFF111111.toInt() else 0xFF8A8F99.toInt())
+            if (on) setTypeface(typeface, Typeface.BOLD)
+            background = roundBg(if (on) ACCENT else PANEL, dp(12f).toFloat())
+            setOnClickListener { if (!on) { prefs.edit().putBoolean("land", value).apply(); recreate() } }
+        }
+        modeRow.addView(modeBtn("세로 (쇼츠)", !land, false), LinearLayout.LayoutParams(0, dp(44f), 1f).apply { rightMargin = dp(6f) })
+        modeRow.addView(modeBtn("가로 (유튜브)", land, true), LinearLayout.LayoutParams(0, dp(44f), 1f))
+        root.addView(modeRow)
+
         slider("흐르는 속도", "speed", 1, 20, 6)
-        slider("글자 크기", "size", 20, 48, 30)
-        slider("대본 창 높이", "ph", 20, 60, 34, "%")
+        if (land) {
+            slider("글자 크기", "size_land", 20, 48, 26)
+            slider("대본 창 높이", "ph_land", 20, 80, 45, "%")
+        } else {
+            slider("글자 크기", "size", 20, 48, 30)
+            slider("대본 창 높이", "ph", 20, 60, 34, "%")
+        }
 
         val start = Button(this).apply {
-            text = "촬영 시작"; textSize = 18f; setTextColor(0xFF111111.toInt()); setTypeface(typeface, Typeface.BOLD)
+            text = if (land) "가로로 촬영 시작" else "촬영 시작"
+            textSize = 18f; setTextColor(0xFF111111.toInt()); setTypeface(typeface, Typeface.BOLD)
             background = roundBg(ACCENT, dp(14f).toFloat()); isAllCaps = false
             setOnClickListener {
                 if (script.text.toString().isBlank()) { script.hint = "대본을 먼저 붙여넣어 주세요"; script.requestFocus(); return@setOnClickListener }
-                startActivity(Intent(this@MainActivity, CameraActivity::class.java))
+                val target = if (prefs.getBoolean("land", false)) CameraLandActivity::class.java else CameraActivity::class.java
+                startActivity(Intent(this@MainActivity, target))
             }
         }
         root.addView(start, LinearLayout.LayoutParams(MATCH_PARENT, dp(58f)).apply { topMargin = dp(16f) })

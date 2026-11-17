@@ -7,6 +7,7 @@ import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.hardware.display.DisplayManager
 import android.media.AudioAttributes
 import android.media.SoundPool
 import android.os.Build
@@ -57,7 +58,17 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-class CameraActivity : ComponentActivity() {
+// 가로 촬영용: 같은 화면을 가로로 고정해서 연다 (manifest에서 sensorLandscape)
+class CameraLandActivity : CameraActivity() {
+    override val land = true
+}
+
+open class CameraActivity : ComponentActivity() {
+
+    protected open val land = false
+    private val sizeKey get() = if (land) "size_land" else "size"
+    private val phKey get() = if (land) "ph_land" else "ph"
+    private var displayListener: DisplayManager.DisplayListener? = null
 
     private lateinit var frame: FrameLayout
     private lateinit var previewView: PreviewView
@@ -112,7 +123,24 @@ class CameraActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        speed = prefs.getInt("speed", 6); sizeSp = prefs.getInt("size", 30); phPct = prefs.getInt("ph", 34)
+        speed = prefs.getInt("speed", 6)
+        sizeSp = prefs.getInt(sizeKey, if (land) 26 else 30)
+        phPct = prefs.getInt(phKey, if (land) 45 else 34)
+        if (land) {
+            // 폰을 반대쪽으로 눕혀도 영상이 거꾸로 저장되지 않게 회전을 따라간다
+            val dm = getSystemService(DISPLAY_SERVICE) as DisplayManager
+            displayListener = object : DisplayManager.DisplayListener {
+                override fun onDisplayAdded(id: Int) {}
+                override fun onDisplayRemoved(id: Int) {}
+                override fun onDisplayChanged(id: Int) {
+                    if (recording == null) {
+                        @Suppress("DEPRECATION") val r = windowManager.defaultDisplay.rotation
+                        videoCapture?.targetRotation = r
+                    }
+                }
+            }
+            dm.registerDisplayListener(displayListener, null)
+        }
         front = prefs.getBoolean("front", true)
         soundPool = SoundPool.Builder().setMaxStreams(2).setAudioAttributes(
             AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
@@ -161,10 +189,12 @@ class CameraActivity : ComponentActivity() {
 
         root.addView(frame, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT, Gravity.CENTER))
 
-        // bottom controls
+        // controls: 세로는 아래 한 줄, 가로는 오른쪽 세로 한 줄
         val bar = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(8f), dp(10f), dp(8f), dp(22f))
+            orientation = if (land) LinearLayout.VERTICAL else LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            if (land) { setPadding(dp(8f), dp(10f), dp(12f), dp(10f)); setBackgroundColor(Color.BLACK) }
+            else setPadding(dp(8f), dp(10f), dp(8f), dp(22f))
         }
         fun small(label: String, onClick: () -> Unit) = Button(this).apply {
             text = label; textSize = 13f; setTextColor(Color.WHITE); isAllCaps = false; minWidth = 0; minimumWidth = 0
@@ -172,13 +202,23 @@ class CameraActivity : ComponentActivity() {
             background = roundBg(0xD91A1C21.toInt(), dp(12f).toFloat()); setPadding(dp(10f), 0, dp(10f), 0)
             setOnClickListener { onClick() }
         }
-        val left = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        left.addView(small("대본") { feedback(); if (recording == null) finish() }, LinearLayout.LayoutParams(WRAP_CONTENT, dp(44f)))
+        // 버튼 사이 간격: 세로 줄이면 위쪽, 가로 줄이면 왼쪽
+        fun gap(lp: LinearLayout.LayoutParams, first: Boolean = false) = lp.apply {
+            if (!first) { if (land) topMargin = dp(6f) else leftMargin = dp(4f) }
+        }
+        val btnW = if (land) dp(72f) else WRAP_CONTENT
+        val btnH = if (land) dp(40f) else dp(44f)
+
+        val left = LinearLayout(this).apply {
+            orientation = if (land) LinearLayout.VERTICAL else LinearLayout.HORIZONTAL
+            gravity = if (land) Gravity.CENTER_HORIZONTAL or Gravity.TOP else Gravity.CENTER_VERTICAL
+        }
+        left.addView(small("대본") { feedback(); if (recording == null) finish() }, gap(LinearLayout.LayoutParams(btnW, btnH), true))
         pauseBtn = small("재생") { feedback(); if (!counting) { if (playing) pause() else play() } }
-        left.addView(pauseBtn, LinearLayout.LayoutParams(WRAP_CONTENT, dp(44f)).apply { leftMargin = dp(4f) })
+        left.addView(pauseBtn, gap(LinearLayout.LayoutParams(btnW, btnH)))
         left.addView(small("전환") { feedback(); if (recording == null) { front = !front; prefs.edit().putBoolean("front", front).apply(); bindCamera() } },
-            LinearLayout.LayoutParams(WRAP_CONTENT, dp(44f)).apply { leftMargin = dp(4f) })
-        bar.addView(left, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+            gap(LinearLayout.LayoutParams(btnW, btnH)))
+        bar.addView(left, if (land) LinearLayout.LayoutParams(WRAP_CONTENT, 0, 1f) else LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
 
         recBtn = FrameLayout(this).apply {
             background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setStroke(dp(5f), Color.WHITE) }
@@ -186,25 +226,39 @@ class CameraActivity : ComponentActivity() {
         }
         recDot = View(this).apply { background = GradientDrawable().apply { setColor(0xFFFF3B3B.toInt()); cornerRadius = dp(30f).toFloat() } }
         recBtn.addView(recDot, FrameLayout.LayoutParams(dp(56f), dp(56f), Gravity.CENTER))
-        bar.addView(recBtn, LinearLayout.LayoutParams(dp(76f), dp(76f)).apply { leftMargin = dp(6f); rightMargin = dp(6f) })
+        bar.addView(recBtn, LinearLayout.LayoutParams(dp(76f), dp(76f)).apply {
+            if (land) { topMargin = dp(6f); bottomMargin = dp(6f) } else { leftMargin = dp(6f); rightMargin = dp(6f) }
+        })
 
-        val right = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL or Gravity.END }
-        right.addView(small("－") { setSpeed(speed - 1) }, LinearLayout.LayoutParams(dp(40f), dp(44f)))
+        val right = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = if (land) Gravity.CENTER_HORIZONTAL or Gravity.BOTTOM else Gravity.CENTER_VERTICAL or Gravity.END
+        }
+        right.addView(small("－") { setSpeed(speed - 1) }, LinearLayout.LayoutParams(dp(36f), dp(44f)))
         speedView = TextView(this).apply { setTextColor(ACCENT); textSize = 18f; setTypeface(typeface, Typeface.BOLD); gravity = Gravity.CENTER }
         right.addView(speedView, LinearLayout.LayoutParams(dp(30f), WRAP_CONTENT))
-        right.addView(small("＋") { setSpeed(speed + 1) }, LinearLayout.LayoutParams(dp(40f), dp(44f)))
-        bar.addView(right, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
-        root.addView(bar, FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT, Gravity.BOTTOM))
+        right.addView(small("＋") { setSpeed(speed + 1) }, LinearLayout.LayoutParams(dp(36f), dp(44f)))
+        bar.addView(right, if (land) LinearLayout.LayoutParams(WRAP_CONTENT, 0, 1f) else LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+
+        if (land) root.addView(bar, FrameLayout.LayoutParams(WRAP_CONTENT, MATCH_PARENT, Gravity.END))
+        else root.addView(bar, FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT, Gravity.BOTTOM))
 
         setContentView(root)
         setSpeed(speed)
 
-        // fit a 9:16 frame inside the screen
+        // 세로는 9:16, 가로는 16:9 화면을 맞춰 넣는다
         root.post {
             val W = root.width; val H = root.height
-            var fw = W; var fh = W * 16 / 9
-            if (fh > H) { fh = H; fw = H * 9 / 16 }
-            frame.layoutParams = FrameLayout.LayoutParams(fw, fh, Gravity.CENTER)
+            if (land) {
+                val avail = W - bar.width
+                var fw = avail; var fh = avail * 9 / 16
+                if (fh > H) { fh = H; fw = H * 16 / 9 }
+                frame.layoutParams = FrameLayout.LayoutParams(fw, fh, Gravity.START or Gravity.CENTER_VERTICAL)
+            } else {
+                var fw = W; var fh = W * 16 / 9
+                if (fh > H) { fh = H; fw = H * 9 / 16 }
+                frame.layoutParams = FrameLayout.LayoutParams(fw, fh, Gravity.CENTER)
+            }
             frame.post { layoutPrompter() }
         }
 
@@ -228,6 +282,8 @@ class CameraActivity : ComponentActivity() {
         prompter.post {
             // TextView must be as tall as the whole script (taller than the window) so every line can scroll through
             val w = prompter.width
+            // 가로 화면은 줄이 너무 길면 눈이 좌우로 많이 움직이니까 오른쪽을 비워 줄 길이를 줄인다
+            if (land) text.setPadding(dp(20f), 0, (w * 0.28f).toInt(), 0)
             text.measure(View.MeasureSpec.makeMeasureSpec(w, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
             text.layoutParams = FrameLayout.LayoutParams(MATCH_PARENT, text.measuredHeight)
             textH = text.measuredHeight
@@ -301,6 +357,8 @@ class CameraActivity : ComponentActivity() {
             .setAspectRatio(AspectRatio.RATIO_16_9)
             .build()
         val vc = VideoCapture.Builder(recorder).setMirrorMode(MirrorMode.MIRROR_MODE_ON_FRONT_ONLY).build()
+        @Suppress("DEPRECATION")
+        vc.targetRotation = windowManager.defaultDisplay.rotation
         videoCapture = vc
         val selector = if (front) CameraSelector.DEFAULT_FRONT_CAMERA else CameraSelector.DEFAULT_BACK_CAMERA
         try {
@@ -373,7 +431,8 @@ class CameraActivity : ComponentActivity() {
             setOnPreparedListener { mp -> mp.isLooping = true; start() }
         }
         val vw = frame.width; val vh = frame.height
-        box.addView(vv, FrameLayout.LayoutParams((vw * 0.78f).toInt(), (vh * 0.78f).toInt(), Gravity.CENTER_HORIZONTAL or Gravity.TOP).apply { topMargin = dp(24f) })
+        val k = if (land) 0.55f else 0.78f
+        box.addView(vv, FrameLayout.LayoutParams((vw * k).toInt(), (vh * k).toInt(), Gravity.CENTER_HORIZONTAL or Gravity.TOP).apply { topMargin = dp(if (land) 12f else 24f) })
         val panel = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16f), dp(12f), dp(16f), dp(24f)) }
         panel.addView(TextView(this).apply {
             text = "이 영상을 저장할까요?"; setTextColor(Color.WHITE); textSize = 18f; setTypeface(typeface, Typeface.BOLD); gravity = Gravity.CENTER
@@ -426,6 +485,7 @@ class CameraActivity : ComponentActivity() {
 
     override fun onDestroy() {
         super.onDestroy(); soundPool?.release(); soundPool = null
+        displayListener?.let { (getSystemService(DISPLAY_SERVICE) as DisplayManager).unregisterDisplayListener(it) }
         cacheDir.listFiles()?.filter { it.name.startsWith("take_") }?.forEach { it.delete() }
     }
 

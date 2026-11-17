@@ -18,5 +18,7 @@
         </activity>
         <activity android:name=".CameraActivity" android:exported="false"
             android:screenOrientation="portrait" />
+        <activity android:name=".CameraLandActivity" android:exported="false"
+            android:screenOrientation="sensorLandscape" />
     </application>
 </manifest>
