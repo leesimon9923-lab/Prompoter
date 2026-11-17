@@ -2,6 +2,11 @@ package com.simongolf.prompter
 
 import android.app.Activity
 import android.app.AlertDialog
+import android.content.ClipboardManager
+import android.graphics.Rect
+import android.view.View
+import android.view.inputmethod.InputMethodManager
+import android.widget.Toast
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
@@ -47,10 +52,11 @@ class MainActivity : Activity() {
         root.addView(TextView(this).apply {
             text = "시몬골프 프롬프터"; setTextColor(Color.WHITE); textSize = 22f; setTypeface(typeface, Typeface.BOLD)
         })
-        root.addView(TextView(this).apply {
+        val help = TextView(this).apply {
             text = "대본을 붙여넣고 촬영 시작을 누르세요. 녹화 버튼을 누르면 3초 뒤 녹화와 대본이 같이 시작돼요. 영상은 갤러리에 저장돼요."
             setTextColor(0xFF8A8F99.toInt()); textSize = 14f; setPadding(0, dp(6f), 0, dp(12f))
-        })
+        }
+        root.addView(help)
 
         script = EditText(this).apply {
             setText(prefs.getString("script", ""))
@@ -66,24 +72,48 @@ class MainActivity : Activity() {
                 override fun afterTextChanged(s: Editable?) { prefs.edit().putString("script", s.toString()).apply() }
             })
         }
+        // 대본 위 버튼줄: [완료] ... [붙여넣기] [대본 전체 지우기]
+        val toolRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, 0, 0, dp(8f)) }
+        fun tool(label: String, bg: Int, fg: Int, onClick: () -> Unit) = Button(this).apply {
+            text = label; textSize = 14f; isAllCaps = false; setTextColor(fg)
+            minHeight = 0; minimumHeight = 0; minWidth = 0; minimumWidth = 0
+            background = roundBg(bg, dp(10f).toFloat(), 0xFF3A3E46.toInt()); setPadding(dp(14f), 0, dp(14f), 0)
+            setOnClickListener { onClick() }
+        }
+        // 키보드가 떠 있을 때만 보이는 "완료": 누르면 키보드를 내린다
+        val doneBtn = tool("완료", ACCENT, 0xFF111111.toInt()) {
+            (getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager).hideSoftInputFromWindow(script.windowToken, 0)
+            script.clearFocus()
+        }.apply { setTypeface(typeface, Typeface.BOLD); visibility = View.GONE }
+        toolRow.addView(doneBtn, LinearLayout.LayoutParams(WRAP_CONTENT, dp(40f)))
+        toolRow.addView(View(this), LinearLayout.LayoutParams(0, 1, 1f))
+        // 붙여넣기: 복사해 둔 글을 커서 자리에 넣는다 (대본이 비어 있으면 그대로 채워짐)
+        toolRow.addView(tool("붙여넣기", PANEL, Color.WHITE) {
+            val cm = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
+            val clip = cm.primaryClip
+            val t = if (clip != null && clip.itemCount > 0) clip.getItemAt(0).coerceToText(this@MainActivity).toString() else ""
+            if (t.isBlank()) { Toast.makeText(this@MainActivity, "복사된 글이 없어요", Toast.LENGTH_SHORT).show(); return@tool }
+            val ed = script.text
+            val a = if (script.hasFocus()) minOf(script.selectionStart, script.selectionEnd).coerceAtLeast(0) else ed.length
+            val b = if (script.hasFocus()) maxOf(script.selectionStart, script.selectionEnd).coerceAtLeast(0) else ed.length
+            ed.replace(a, b, t)
+            Toast.makeText(this@MainActivity, "붙여넣었어요", Toast.LENGTH_SHORT).show()
+        }, LinearLayout.LayoutParams(WRAP_CONTENT, dp(40f)).apply { rightMargin = dp(8f) })
         // 대본 전체 지우기 (실수로 누를 수 있으니 한 번 물어본다)
-        val clearRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.END; setPadding(0, 0, 0, dp(8f)) }
-        clearRow.addView(Button(this).apply {
-            text = "대본 전체 지우기"; textSize = 14f; isAllCaps = false; setTextColor(Color.WHITE)
-            minHeight = 0; minimumHeight = 0
-            background = roundBg(PANEL, dp(10f).toFloat(), 0xFF3A3E46.toInt()); setPadding(dp(14f), 0, dp(14f), 0)
-            setOnClickListener {
-                if (script.text.isNullOrEmpty()) return@setOnClickListener
-                AlertDialog.Builder(this@MainActivity)
-                    .setMessage("대본을 전부 지울까요?")
-                    .setPositiveButton("지우기") { _, _ -> script.setText(""); script.requestFocus() }
-                    .setNegativeButton("취소", null)
-                    .show()
-            }
+        toolRow.addView(tool("대본 전체 지우기", PANEL, Color.WHITE) {
+            if (script.text.isNullOrEmpty()) return@tool
+            AlertDialog.Builder(this@MainActivity)
+                .setMessage("대본을 전부 지울까요?")
+                .setPositiveButton("지우기") { _, _ -> script.setText("") }
+                .setNegativeButton("취소", null)
+                .show()
         }, LinearLayout.LayoutParams(WRAP_CONTENT, dp(40f)))
-        root.addView(clearRow)
+        root.addView(toolRow)
 
         root.addView(script, LinearLayout.LayoutParams(MATCH_PARENT, 0, 1f))
+
+        // 대본 아래 설정들: 키보드가 뜨면 통째로 숨겨서 대본 칸을 크게 쓴다
+        val settings = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
 
         fun slider(label: String, key: String, min: Int, max: Int, def: Int, suffix: String = "") {
             val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, dp(12f), 0, 0) }
@@ -100,7 +130,7 @@ class MainActivity : Activity() {
             value.text = "${prefs.getInt(key, def)}$suffix"
             row.addView(sb, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
             row.addView(value, LinearLayout.LayoutParams(dp(48f), WRAP_CONTENT))
-            root.addView(row)
+            settings.addView(row)
         }
         // 촬영 방향: 세로(쇼츠·릴스) / 가로(유튜브 롱폼). 글자 크기·창 높이는 방향마다 따로 기억
         val land = prefs.getBoolean("land", false)
@@ -116,7 +146,7 @@ class MainActivity : Activity() {
         }
         modeRow.addView(modeBtn("세로 (쇼츠)", !land, false), LinearLayout.LayoutParams(0, dp(44f), 1f).apply { rightMargin = dp(6f) })
         modeRow.addView(modeBtn("가로 (유튜브)", land, true), LinearLayout.LayoutParams(0, dp(44f), 1f))
-        root.addView(modeRow)
+        settings.addView(modeRow)
 
         slider("흐르는 속도", "speed", 1, 20, 6)
         if (land) {
@@ -137,8 +167,21 @@ class MainActivity : Activity() {
                 startActivity(Intent(this@MainActivity, target))
             }
         }
-        root.addView(start, LinearLayout.LayoutParams(MATCH_PARENT, dp(58f)).apply { topMargin = dp(16f) })
+        settings.addView(start, LinearLayout.LayoutParams(MATCH_PARENT, dp(58f)).apply { topMargin = dp(16f) })
+        root.addView(settings)
 
         setContentView(root)
+
+        // 키보드가 뜨면 설명·설정을 숨기고 "완료" 버튼을 보여 준다
+        root.viewTreeObserver.addOnGlobalLayoutListener {
+            val r = Rect(); root.getWindowVisibleDisplayFrame(r)
+            val screenH = root.rootView.height
+            val kb = screenH - r.bottom > screenH * 0.2f
+            val vis = if (kb) View.GONE else View.VISIBLE
+            if (settings.visibility != vis) {
+                settings.visibility = vis; help.visibility = vis
+                doneBtn.visibility = if (kb) View.VISIBLE else View.GONE
+            }
+        }
     }
 }
