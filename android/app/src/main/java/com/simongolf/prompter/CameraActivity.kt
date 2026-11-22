@@ -302,7 +302,12 @@ open class CameraActivity : ComponentActivity() {
             dirRe.findAll(p).forEach { m -> m.groupValues[1].trim().takeIf { it.isNotEmpty() }?.let { pend.add(it) } }
             val rest = p.replace(dirRe, " ").replace(Regex("\\s+"), " ").trim()
             if (rest.isEmpty()) return@forEach
-            if (sb.isNotEmpty()) sb.append("\n\n")
+            if (sb.isNotEmpty()) {
+                // 줄 사이 빈 줄을 아주 얇게 (예전엔 글자 한 줄만큼 띄워서 화면이 길어졌음)
+                val g = sb.length
+                sb.append("\n​\n")
+                sb.setSpan(RelativeSizeSpan(0.25f), g + 1, g + 2, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            }
             if (pend.isNotEmpty()) {
                 val s = sb.length
                 sb.append("(").append(pend.joinToString(" / ")).append(")\n")
